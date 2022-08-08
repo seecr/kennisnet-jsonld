@@ -51,19 +51,24 @@ def as_value(v,l):
         return {'@value':v, '@language':l}
     return {'@value':v}
 
-def definition(lookup, type, scheme, value_p, source_p=None, identifier_p=None):
+def definition(lookup, type, value_p=None, source_p=None, identifier_p=None):
     def check_fn(a,s,p,os):
         result = a.get(p, [])
         for o in os:
             new_o = {}
-            value = getp_first_value(o, value_p)
+            value = getp_first_value(o, value_p) or getp_first_value(o, identifier_p) or o.get('@value') or o.get('@id')
             if not value:
                 continue
-            l = lookup(scheme, value)
-            new_value = first(l.labels)
-            if not new_value is None:
-                v,lang = new_value
-                new_o[value_p] = [{'@value':v} | ({'@language':lang} if lang else {})]
+            l = lookup(p, value)
+
+            if value_p:
+                for v,lang in l.labels:
+                    new_o.setdefault(value_p, []).append(as_value(v,lang))
+            if identifier_p and l.identifier:
+                new_o[identifier_p] = [{'@value': l.identifier}]
+            if source_p and l.source:
+                new_o[source_p] = [{'@value': l.source}]
+            # if
             if not l.id is None:
                 new_o['@id'] = l.id
             if new_o:
@@ -74,11 +79,23 @@ def definition(lookup, type, scheme, value_p, source_p=None, identifier_p=None):
         return a
     return check_fn
 
+
 def prepare_enrich(lookup=None):
+    def _lookup(scheme):
+        def lookup_fn(predicate, value):
+            key = predicate.replace(schema, 'schema:') # Used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
+            return lookup(key=key, scheme=scheme, value=value)
+        return lookup_fn
     rules = {
-        schema+'audience': definition(lookup, schema+'Audience',
-                scheme='urn:lms:intendedenduserrole',
-                value_p=schema+'audienceType',),
+        schema+'audience': definition(_lookup('urn:lms:intendedenduserrole'),
+                schema+'Audience',
+                identifier_p=schema+'audienceType',),
+        schema+'educationalLevel': definition(_lookup('urn:lms:educationallevel'),
+                schema+'DefinedTerm',
+                value_p=schema+'name',
+                identifier_p=schema+'termCode',
+                source_p=schema+'inDefinedTermSet',
+                ),
         '*': identity,
     }
     return walk(rules)
@@ -93,22 +110,33 @@ from collections import namedtuple
 _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels'], defaults=[None, None, None, list()])
 
 
-# will differ from current kennisnet.edurep.schemalookup
-def lookup_for_test(scheme, value):
-    return {
-        'urn:lms:intendedenduserrole': {
-            'teacher': _l(
-                    id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
-                    identifier='teacher',
-                    source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-                    labels=[('docent', 'nl')]),
-            'learnerrr': _l(
-                    id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
-                    identifier='learner',
-                    source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-                    labels=[('leerling', 'nl')])
-        },
-    }.get(scheme, {}).get(value, _l())
+testlookupdata = {
+    'urn:lms:intendedenduserrole': {
+        'teacher': _l(
+                id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
+                identifier='teacher',
+                source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
+                labels=[('docent', 'nl')]),
+        'learnerrr': _l(
+                id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
+                identifier='learner',
+                source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
+                labels=[('leerling', 'nl')]),
+    },
+    'urn:lms:educationallevel': {
+        'VO': _l(
+            id='http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+            identifier="2a1401e9-c223-493b-9b86-78f6993b1a8d",
+            source="http://purl.edustandaard.nl/begrippenkader",
+            labels=[('VO', 'nl')],
+            # definition=[('Voortgezet Onderwijs', 'nl')])
+            ),
+    },
+}
+testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
+
+def lookup_for_test(key, scheme, value):
+    return testlookupdata.get(scheme, {}).get(value, _l())
 
 @test.fixture
 def enricher():
@@ -116,9 +144,9 @@ def enricher():
 
 @test
 def test_setup():
-    test.eq(None, lookup_for_test('scheme', 'value').source)
+    test.eq(None, lookup_for_test('schema:thing', 'scheme', 'value').source)
     test.eq('http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-            lookup_for_test('urn:lms:intendedenduserrole', 'learnerrr').source)
+            lookup_for_test('schema:audience', 'urn:lms:intendedenduserrole', 'learnerrr').source)
 
 @test
 def test_audience(enricher):
@@ -142,13 +170,33 @@ def test_audience(enricher):
         '@id': 'some:id',
         'schema:name': 'Name',
         'schema:audience':[{
-            'schema:audienceType': {'@value': 'leerling', '@language':'nl'},
+            'schema:audienceType': 'learner',
             '@type': 'schema:Audience',
             '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
             },{
-            'schema:audienceType': {'@value': 'docent', '@language':'nl'},
+            'schema:audienceType': 'teacher',
             '@type': 'schema:Audience',
             '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
+        }]})
+    test.eq(x,[r], msg=test.diff)
+
+@test
+def test_audience_from_value(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:audience': 'learnerrr',
+        })
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:audience':[{
+            'schema:audienceType': 'learner',
+            '@type': 'schema:Audience',
+            '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
         }]})
     test.eq(x,[r], msg=test.diff)
 
@@ -170,5 +218,57 @@ def test_invalid(enricher):
         })
     test.eq(x,[r], msg=test.diff)
 
+@test
+def test_educationallevel(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://download.edustandaard.nl/vdex/vdex_context_czp_20060628.xml',
+            'schema:name': 'VO'},
+        })
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'VO'},
+            'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
+        })
+    # pprint([r])
+    # pprint(x)
+    test.eq(x[0],r, msg=test.diff)
 
+@test
+def test_educationallevel_by_id(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+        }})
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'VO'},
+            'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
+        })
+    # pprint([r])
+    # pprint(x)
+    test.eq(x[0],r, msg=test.diff)
 
