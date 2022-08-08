@@ -97,6 +97,11 @@ _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels'], defaul
 def lookup_for_test(scheme, value):
     return {
         'urn:lms:intendedenduserrole': {
+            'teacher': _l(
+                    id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
+                    identifier='teacher',
+                    source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
+                    labels=[('docent', 'nl')]),
             'learnerrr': _l(
                     id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
                     identifier='learner',
@@ -105,7 +110,9 @@ def lookup_for_test(scheme, value):
         },
     }.get(scheme, {}).get(value, _l())
 
-enrich = prepare_enrich(lookup_for_test)
+@test.fixture
+def enricher():
+    yield prepare_enrich(lookup_for_test)
 
 @test
 def test_setup():
@@ -114,25 +121,54 @@ def test_setup():
             lookup_for_test('urn:lms:intendedenduserrole', 'learnerrr').source)
 
 @test
-def test_audience():
+def test_audience(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:audience':[{
+            'schema:audienceType': 'learnerrr',
+            '@type': 'schema:Audience',
+            },{
+            'schema:audienceType': 'wrong',
+            '@type': 'schema:Audience',
+            },{
+            'schema:audienceType': [{'@value':'teacher'}, {'@value':'docent'}],
+            '@type': 'schema:Audience',
+        }]})
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:audience':[{
+            'schema:audienceType': {'@value': 'leerling', '@language':'nl'},
+            '@type': 'schema:Audience',
+            '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
+            },{
+            'schema:audienceType': {'@value': 'docent', '@language':'nl'},
+            '@type': 'schema:Audience',
+            '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
+        }]})
+    test.eq(x,[r], msg=test.diff)
+
+@test
+def test_invalid(enricher):
     i = jsonld.expand({
         '@context':{'schema':schema},
         '@id': 'some:id',
         'schema:name': 'Name',
         'schema:audience':{
-            'schema:audienceType': 'learnerrr',
+            'schema:audienceType': 'no such thing',
             '@type': 'schema:Audience',
         }})
-    r = enrich(i[0])
+    r = enricher(i[0])
     x = jsonld.expand({
         '@context':{'schema':schema},
         '@id': 'some:id',
         'schema:name': 'Name',
-        'schema:audience':{
-            'schema:audienceType': {'@value': 'leerling', '@language':'nl'},
-            '@type': 'schema:Audience',
-            '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
-        }})
+        })
     test.eq(x,[r], msg=test.diff)
+
 
 
