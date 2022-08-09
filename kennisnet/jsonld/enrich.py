@@ -272,3 +272,29 @@ def test_educationallevel_by_id(enricher):
     # pprint(x)
     test.eq(x[0],r, msg=test.diff)
 
+@test
+def test_definition():
+    looked = []
+    def lookup(p, v):
+        looked.append((p,v))
+        return _l(id='urn:id', identifier='identifier', labels=[('aap', 'nl'), ('ape', 'en')], source='source')
+
+    df = definition(lookup, 'type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
+    acc = {'has':'value'}
+    os = [{'@value':'value'}]
+    s = {'value_p':os}
+    p = 'pred'
+    r = df(acc,s,p,os)
+
+    test.eq([('pred', 'value')], looked)
+    test.eq({'has': 'value',
+        'pred': [{
+            'value_p': [{'@value': 'aap', '@language': 'nl'},
+                        {'@value': 'ape', '@language': 'en'}],
+            'identifier_p': [{'@value': 'identifier'}],
+            'source_p': [{'@value': 'source'}],
+            '@id': 'urn:id',
+            '@type': ['type']
+            }]
+        }, r)
+
