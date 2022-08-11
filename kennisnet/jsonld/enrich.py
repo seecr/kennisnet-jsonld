@@ -150,6 +150,29 @@ def cost(target_p, lookup):
     return text_fn
 
 
+def license(target_p, lookup):
+    def license_fn(a, s, p, os):
+        r_other = a.get(lom+'copyrightAndOtherRestrictions', [])
+        r_notice = a.get(schema+'copyrightNotice', [])
+        r_license = a.get(schema+'license', [])
+        if r_other or r_license or r_notice:
+            # Already a result
+            return a
+        for v in values(s.get(lom+'copyrightAndOtherRestrictions', [])):
+            l = lookup(v)
+            if l.uri:
+                r_license.append({'@value': l.uri})
+                r_other.append({'@value': v})
+                for v,lang in l.labels:
+                    r_notice.append(as_value(v,lang))
+        new = {k:v for k,v in [
+                (lom+'copyrightAndOtherRestrictions', r_other),
+                (schema+'copyrightNotice', r_notice),
+                (schema+'license', r_license),
+            ] if v}
+        return a | new
+    return license_fn
+
 def switch_inDefinedTermSet(s):
     # print('switch_inDefinedTermSet', s)
     termSet = getp_first_value(s, schema+'inDefinedTermSet')
@@ -198,6 +221,7 @@ def prepare_enrich(lookup=None):
             identifier_p=schema+'termCode',
             source_p=schema+'inDefinedTermSet',
         )
+    license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
     rules = {
         schema+'keywords': copy_data(schema+'keywords', prepend=True),
         schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
@@ -224,6 +248,9 @@ def prepare_enrich(lookup=None):
                     target_p=schema+'educationalLevel',
                 ),
             },
+        schema+'license': license_fn,
+        schema+'copyrightNotice': license_fn,
+        lom+'copyrightAndOtherRestrictions': license_fn,
         '*': identity,
     }
     return walk(rules), info
@@ -235,7 +262,7 @@ from autotest import test
 from pprint import pprint
 from collections import namedtuple
 
-_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels'], defaults=[None, None, None, list()])
+_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri'], defaults=[None, None, None, list(), None])
 
 
 testlookupdata = {
@@ -265,6 +292,9 @@ testlookupdata = {
     },
     'urn:lms:cost': {
         'ja': _l(identifier='yes'),
+    },
+    'urn:lms:license': {
+        'cc-by-40': _l(uri='http://creativecommons.org/licenses/by/4.0/', labels=[("CC BY 4.0", 'nl')]),
     },
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
@@ -548,6 +578,26 @@ def test_isAccessibleForFree(enricher):
     test.eq(x[0],r, msg=test.diff)
 
 @test
+def test_license(enricher):
+    i = example({
+        'lom:copyrightAndOtherRestrictions': 'cc-by-40',
+        'schema:copyrightNotice': 'Notice, will be removed'})
+    r = enricher(i[0])
+    x = example({
+        'lom:copyrightAndOtherRestrictions': 'cc-by-40',
+        'schema:copyrightNotice': {'@language': 'nl', '@value': 'CC BY 4.0'},
+        'schema:license': 'http://creativecommons.org/licenses/by/4.0/'})
+    test.eq(x[0],r, msg=test.diff)
+
+
+    i = example({
+        'lom:copyrightAndOtherRestrictions': 'some unresolvable text',
+        'schema:copyrightNotice': 'Notice stays'})
+    i = example({
+        'schema:copyrightNotice': 'Notice stays'})
+    # from schema:license
+
+@test
 def test_enrich_info():
     enrich_lookup_info = prepare_enrich(lookup_for_test)[1]
     test.eq({
@@ -558,4 +608,5 @@ def test_enrich_info():
         'schema:encodingFormat': 'urn:lms:mimetype',
         'schema:interactivityType': 'urn:lms:interactivitytype',
         'schema:isAccessibleForFree': 'urn:lms:cost',
+        'schema:license': 'urn:lms:license',
         }, enrich_lookup_info, msg=test.diff)
