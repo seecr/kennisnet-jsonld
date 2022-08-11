@@ -23,10 +23,13 @@
 #
 ## end license ##
 
-from metastreams.jsonld import walk, identity
+from metastreams.jsonld import walk, identity, ignore_silently
 
 
 schema = 'https://schema.org/'
+dcterms = "http://purl.org/dc/terms/"
+lom = "http://ltsc.ieee.org/xsd/LOM#"
+prov: "http://www.w3.org/ns/prov#"
 
 def getp_first_value(d, p):
     for i in d.get(p, []):
@@ -51,33 +54,108 @@ def as_value(v,l):
         return {'@value':v, '@language':l}
     return {'@value':v}
 
-def definition(lookup, type, value_p=None, source_p=None, identifier_p=None):
+def values(os):
+    for o in os:
+        yield o['@value']
+
+def _definition_fns(type, value_p=None, source_p=None, identifier_p=None):
+    def value_fn(o):
+        return getp_first_value(o, identifier_p) or getp_first_value(o, value_p) or o.get('@value') or o.get('@id')
+
+    def build_fn(l):
+        new_o = {}
+        if value_p:
+            for v,lang in l.labels:
+                new_o.setdefault(value_p, []).append(as_value(v,lang))
+        if identifier_p and l.identifier:
+            new_o[identifier_p] = [{'@value': l.identifier}]
+        if source_p and l.source:
+            new_o[source_p] = [{'@value': l.source}]
+        # if
+        if not l.id is None:
+            new_o['@id'] = l.id
+        if new_o:
+            new_o['@type'] = [type]
+            return new_o
+    return value_fn, build_fn
+
+def _not_found(not_found_definition, value_p=None, source_p=None, identifier_p=None, **_):
+    if not_found_definition is None:
+        return None, lambda o: None
+    def build_fn(o):
+        new_o = {}
+        for old_p, new_p in [
+                (value_p, not_found_definition.get('value_p')),
+                (source_p, not_found_definition.get('source_p')),
+                (identifier_p, not_found_definition.get('identifier_p')),
+                ]:
+            if old_p is None or new_p is None:
+                continue
+            v = o.get(old_p)
+            if v is None:
+                continue
+            new_o[new_p] = v
+        if new_o and not_found_definition.get('type'):
+            new_o['@type'] = [not_found_definition['type']]
+        return new_o
+    return not_found_definition.get('target_p'), build_fn
+
+def definition(target_p, lookup, not_found_definition=None, **kwargs):
+    value_fn, build_fn = _definition_fns(**kwargs)
+    new_target_p, copy_fn = _not_found(not_found_definition, **kwargs)
+
     def check_fn(a,s,p,os):
-        result = a.get(p, [])
+        result = a.get(target_p, [])
+        alt_result = None if new_target_p is None else a.get(new_target_p, [])
         for o in os:
-            new_o = {}
-            value = getp_first_value(o, value_p) or getp_first_value(o, identifier_p) or o.get('@value') or o.get('@id')
+            target = target_p
+            value = value_fn(o)
             if not value:
                 continue
-            l = lookup(p, value)
+            l = lookup(target_p, value)
 
-            if value_p:
-                for v,lang in l.labels:
-                    new_o.setdefault(value_p, []).append(as_value(v,lang))
-            if identifier_p and l.identifier:
-                new_o[identifier_p] = [{'@value': l.identifier}]
-            if source_p and l.source:
-                new_o[source_p] = [{'@value': l.source}]
-            # if
-            if not l.id is None:
-                new_o['@id'] = l.id
-            if new_o:
-                new_o['@type'] = [type]
-                result.append(new_o)
+            new = build_fn(l)
+            if new:
+                result.append(new)
+            else:
+                new = copy_fn(o)
+                if new:
+                    alt_result.append(new)
+
+        addition = {}
         if result:
-            return a | {p:result}
-        return a
+            addition[target_p] = result
+        if alt_result:
+            addition[new_target_p] = alt_result
+        return a | addition
     return check_fn
+
+def text(target_p, lookup):
+    def text_fn(a,s,p,os):
+        result = a.get(target_p, [])
+        for v in values(os):
+            l = lookup(target_p, v)
+            if l.identifier:
+                result.append({'@value':l.identifier})
+        return a | {target_p:result}
+    return text_fn
+
+def switch_inDefinedTermSet(s):
+    # print('switch_inDefinedTermSet', s)
+    termSet = getp_first_value(s, schema+'inDefinedTermSet')
+    if not termSet:
+        return 'default'
+    for starter in ['http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid', 'http://purl.edustandaard.nl/concept']:
+        if termSet.startswith(starter):
+            return 'copy'
+    return 'default'
+
+def copy_data(target_p, prepend=False):
+    def copy_fn(a,s,p,os):
+        n = a.get(target_p, [])
+        c = (list(os)+n) if prepend else (n+list(os))
+        return a | {target_p:c}
+    return copy_fn
 
 
 def prepare_enrich(lookup=None):
@@ -86,16 +164,51 @@ def prepare_enrich(lookup=None):
             key = predicate.replace(schema, 'schema:') # Used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
             return lookup(key=key, scheme=scheme, value=value)
         return lookup_fn
+    keyword_definition = dict(
+            target_p=schema+'keywords',
+            type=schema+'DefinedTerm',
+            value_p=schema+'name',
+            identifier_p=schema+'termCode',
+            source_p=schema+'inDefinedTermSet',
+        )
     rules = {
-        schema+'audience': definition(_lookup('urn:lms:intendedenduserrole'),
-                schema+'Audience',
+        schema+'keywords': copy_data(schema+'keywords', prepend=True),
+        schema+'creativeWorkStatus': text(
+                target_p=schema+'creativeWorkStatus',
+                lookup=_lookup('urn:lms:status')
+            ),
+        schema+'interactivityType': text(
+                target_p=schema+'interactivityType',
+                lookup=_lookup('urn:lms:interactivitytype')
+            ),
+        schema+'encodingFormat': text(
+                target_p=schema+'encodingFormat',
+                lookup=_lookup('urn:lms:mimetype')
+            ),
+        lom+'aggregationLevel': text(
+                target_p=lom+'aggregationLevel',
+                lookup=_lookup('urn:lms:aggregationlevel')
+            ),
+        schema+'audience': definition(
+                target_p=schema+'audience',
+                lookup=_lookup('urn:lms:intendedenduserrole'),
+                type=schema+'Audience',
                 identifier_p=schema+'audienceType',),
-        schema+'educationalLevel': definition(_lookup('urn:lms:educationallevel'),
-                schema+'DefinedTerm',
-                value_p=schema+'name',
-                identifier_p=schema+'termCode',
-                source_p=schema+'inDefinedTermSet',
+        schema+'educationalLevel': {
+            '__switch__': lambda a,s: switch_inDefinedTermSet(s),
+            'default': definition(
+                    target_p=schema+'educationalLevel',
+                    lookup=_lookup('urn:lms:educationallevel'),
+                    type=schema+'DefinedTerm',
+                    value_p=schema+'name',
+                    identifier_p=schema+'termCode',
+                    source_p=schema+'inDefinedTermSet',
+                    not_found_definition=keyword_definition,
                 ),
+            'copy': copy_data(
+                    target_p=schema+'educationalLevel',
+                ),
+            },
         '*': identity,
     }
     return walk(rules)
@@ -132,6 +245,9 @@ testlookupdata = {
             # definition=[('Voortgezet Onderwijs', 'nl')])
             ),
     },
+    'urn:lms:status': {
+        'definitief': _l(identifier='final'),
+    }
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
 
@@ -242,8 +358,6 @@ def test_educationallevel(enricher):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    # pprint([r])
-    # pprint(x)
     test.eq(x[0],r, msg=test.diff)
 
 @test
@@ -268,27 +382,115 @@ def test_educationallevel_by_id(enricher):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    # pprint([r])
-    # pprint(x)
     test.eq(x[0],r, msg=test.diff)
 
 @test
-def test_definition():
+def test_educationallevel_copy(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Copy'},
+            }
+        })
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': {
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Copy'},
+            }
+        })
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_multi(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': [{
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+            },{
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Copy'},
+            }, {
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://download.edustandaard.nl/vdex/vdex_classification_educationallevel_czp_20060628.xml',
+            'schema:name': {'@language': 'nl', '@value': 'VWO, studiehuis'},
+            'schema:termCode': 'vwo_st'
+            }, {
+            '@type': 'schema:DefinedTerm',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Voortgezet Onderwijs'},
+            }],
+        'schema:keywords':['aap', 'noot'],
+        })
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:educationalLevel': [{
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'VO'},
+            'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'
+            },{
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Copy'},
+            }],
+        'schema:keywords':[{'@value': 'aap'},{'@value': 'noot'},
+            {
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://download.edustandaard.nl/vdex/vdex_classification_educationallevel_czp_20060628.xml',
+            'schema:name': {'@language': 'nl', '@value': 'VWO, studiehuis'},
+            'schema:termCode': 'vwo_st'
+            },{
+            '@type': 'schema:DefinedTerm',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Voortgezet Onderwijs'},
+            }]
+        })
+    test.eq(x[0],r, msg=test.diff)
+
+def prepare_lookup(no_result_for=None):
     looked = []
     def lookup(p, v):
         looked.append((p,v))
+        if v == no_result_for:
+            return _l()
         return _l(id='urn:id', identifier='identifier', labels=[('aap', 'nl'), ('ape', 'en')], source='source')
+    return looked, lookup
 
-    df = definition(lookup, 'type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
+@test
+def test_definition():
+    looked, lookup = prepare_lookup()
+
+    df = definition(target_p='target_p', lookup=lookup, type='type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
     acc = {'has':'value'}
     os = [{'@value':'value'}]
     s = {'value_p':os}
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq([('pred', 'value')], looked)
+    test.eq([('target_p', 'value')], looked)
     test.eq({'has': 'value',
-        'pred': [{
+        'target_p': [{
             'value_p': [{'@value': 'aap', '@language': 'nl'},
                         {'@value': 'ape', '@language': 'en'}],
             'identifier_p': [{'@value': 'identifier'}],
@@ -298,3 +500,63 @@ def test_definition():
             }]
         }, r)
 
+@test
+def test_definition_not_found():
+    looked, lookup = prepare_lookup(no_result_for='value')
+
+    df = definition(target_p='target_p', lookup=lookup, type='type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
+    acc = {'has':'value'}
+    os = [{'@value':'value'}]
+    s = {'value_p':os}
+    p = 'pred'
+    r = df(acc,s,p,os)
+
+    test.eq([('target_p', 'value')], looked)
+    test.eq({'has': 'value',
+        }, r)
+
+@test
+def test_definition_not_found():
+    looked, lookup = prepare_lookup(no_result_for='orig_value')
+
+    df = definition(target_p='target_p', lookup=lookup, type='type', value_p='value_p', source_p='source_p', identifier_p='identifier_p',
+            not_found_definition=dict(target_p='new_target_p', type='new_type', value_p='new_value_p', source_p='new_source_p', identifier_p='new_identifier_p'),
+            )
+    acc = {'has':'value'}
+    os = [{'@type':['type'],
+        'source_p':[{'@value':'orig_source'}],
+        'value_p':[{'@value':'orig_value'}],
+        'identifier_p':[{'@identifier':'orig_identifier'}],
+        '@id':'urn:orig:id',
+        }]
+    s = {'value_p':os}
+    p = 'pred'
+    r = df(acc,s,p,os)
+
+    test.eq([('target_p', 'orig_value')], looked)
+    test.eq({'has': 'value',
+        'new_target_p':[{
+            '@type':['new_type'],
+            'new_source_p':[{'@value':'orig_source'}],
+            'new_value_p':[{'@value':'orig_value'}],
+            'new_identifier_p':[{'@identifier':'orig_identifier'}],
+        }]}, r, msg=test.diff)
+
+@test
+def test_text(enricher):
+    i = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:creativeWorkStatus': 'definitief',
+        })
+    r = enricher(i[0])
+    x = jsonld.expand({
+        '@context':{'schema':schema},
+        '@id': 'some:id',
+        'schema:name': 'Name',
+        'schema:creativeWorkStatus': 'final',
+        })
+    # pprint([r])
+    # pprint(x)
+    test.eq(x[0],r, msg=test.diff)
