@@ -112,7 +112,7 @@ def definition(target_p, lookup, not_found_definition=None, **kwargs):
             value = value_fn(o)
             if not value:
                 continue
-            l = lookup(target_p, value)
+            l = lookup(value)
 
             new = build_fn(l)
             if new:
@@ -134,11 +134,21 @@ def text(target_p, lookup):
     def text_fn(a,s,p,os):
         result = a.get(target_p, [])
         for v in values(os):
-            l = lookup(target_p, v)
+            l = lookup(v)
             if l.identifier:
                 result.append({'@value':l.identifier})
         return a | {target_p:result}
     return text_fn
+
+def cost(target_p, lookup):
+    def text_fn(a,s,p,os):
+        for v in values(os):
+            l = lookup(v)
+            if l.identifier:
+                return a | {target_p:[{'@value': l.identifier != 'yes'}]}
+        return a
+    return text_fn
+
 
 def switch_inDefinedTermSet(s):
     # print('switch_inDefinedTermSet', s)
@@ -157,13 +167,30 @@ def copy_data(target_p, prepend=False):
         return a | {target_p:c}
     return copy_fn
 
+def is_boolean(a,s,p,os):
+    result = a.get(p, [])
+    for v in values(os):
+        if type(v) is bool:
+            result.append({'@value': v})
+            continue
+        b = {'true':True, 'yes':True, 'ja':True, 'false':False, 'no':False, 'nee':False}.get(str(v).lower())
+        if not b is None:
+            result.append({'@value': b})
+    if result:
+        return a | {p:result}
+    return a
+
 
 def prepare_enrich(lookup=None):
-    def _lookup(scheme):
-        def lookup_fn(predicate, value):
-            key = predicate.replace(schema, 'schema:') # Used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
+    info = {}
+    def target_and_lookup(target_p, scheme):
+        key = target_p.replace(schema, 'schema:').replace(lom, 'lom:')
+        # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
+        info[key] = scheme
+        def lookup_fn(value):
             return lookup(key=key, scheme=scheme, value=value)
-        return lookup_fn
+        return dict(target_p=target_p, lookup=lookup_fn)
+
     keyword_definition = dict(
             target_p=schema+'keywords',
             type=schema+'DefinedTerm',
@@ -173,37 +200,25 @@ def prepare_enrich(lookup=None):
         )
     rules = {
         schema+'keywords': copy_data(schema+'keywords', prepend=True),
-        schema+'creativeWorkStatus': text(
-                target_p=schema+'creativeWorkStatus',
-                lookup=_lookup('urn:lms:status')
-            ),
-        schema+'interactivityType': text(
-                target_p=schema+'interactivityType',
-                lookup=_lookup('urn:lms:interactivitytype')
-            ),
-        schema+'encodingFormat': text(
-                target_p=schema+'encodingFormat',
-                lookup=_lookup('urn:lms:mimetype')
-            ),
-        lom+'aggregationLevel': text(
-                target_p=lom+'aggregationLevel',
-                lookup=_lookup('urn:lms:aggregationlevel')
-            ),
+        schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
+        schema+'interactivityType': text(**target_and_lookup(schema+'interactivityType', 'urn:lms:interactivitytype')),
+        schema+'encodingFormat': text(**target_and_lookup(schema+'encodingFormat', 'urn:lms:mimetype')),
+        lom+'aggregationLevel': text(**target_and_lookup(lom+'aggregationLevel', 'urn:lms:aggregationlevel')),
+        lom+'cost': cost(**target_and_lookup(schema+'isAccessibleForFree', 'urn:lms:cost')),
+        schema+'isAccessibleForFree': is_boolean,
         schema+'audience': definition(
-                target_p=schema+'audience',
-                lookup=_lookup('urn:lms:intendedenduserrole'),
                 type=schema+'Audience',
-                identifier_p=schema+'audienceType',),
+                identifier_p=schema+'audienceType',
+                **target_and_lookup(schema+'audience', 'urn:lms:intendedenduserrole')),
         schema+'educationalLevel': {
             '__switch__': lambda a,s: switch_inDefinedTermSet(s),
             'default': definition(
-                    target_p=schema+'educationalLevel',
-                    lookup=_lookup('urn:lms:educationallevel'),
                     type=schema+'DefinedTerm',
                     value_p=schema+'name',
                     identifier_p=schema+'termCode',
                     source_p=schema+'inDefinedTermSet',
                     not_found_definition=keyword_definition,
+                    **target_and_lookup(schema+'educationalLevel', 'urn:lms:educationallevel'),
                 ),
             'copy': copy_data(
                     target_p=schema+'educationalLevel',
@@ -211,7 +226,7 @@ def prepare_enrich(lookup=None):
             },
         '*': identity,
     }
-    return walk(rules)
+    return walk(rules), info
 
 __all__ = ['prepare_enrich']
 
@@ -247,16 +262,25 @@ testlookupdata = {
     },
     'urn:lms:status': {
         'definitief': _l(identifier='final'),
-    }
+    },
+    'urn:lms:cost': {
+        'ja': _l(identifier='yes'),
+    },
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
 
 def lookup_for_test(key, scheme, value):
     return testlookupdata.get(scheme, {}).get(value, _l())
 
+def example(d):
+    return jsonld.expand({
+        '@context':{'schema':schema, 'lom': lom,},
+        '@id': 'some:id',
+        'schema:name': 'Name'}|d)
+
 @test.fixture
 def enricher():
-    yield prepare_enrich(lookup_for_test)
+    yield prepare_enrich(lookup_for_test)[0]
 
 @test
 def test_setup():
@@ -266,10 +290,7 @@ def test_setup():
 
 @test
 def test_audience(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:audience':[{
             'schema:audienceType': 'learnerrr',
             '@type': 'schema:Audience',
@@ -281,10 +302,7 @@ def test_audience(enricher):
             '@type': 'schema:Audience',
         }]})
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:audience':[{
             'schema:audienceType': 'learner',
             '@type': 'schema:Audience',
@@ -298,17 +316,9 @@ def test_audience(enricher):
 
 @test
 def test_audience_from_value(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
-        'schema:audience': 'learnerrr',
-        })
+    i = example({'schema:audience': 'learnerrr'})
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:audience':[{
             'schema:audienceType': 'learner',
             '@type': 'schema:Audience',
@@ -318,38 +328,25 @@ def test_audience_from_value(enricher):
 
 @test
 def test_invalid(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:audience':{
             'schema:audienceType': 'no such thing',
             '@type': 'schema:Audience',
         }})
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
-        })
+    x = example({})
     test.eq(x,[r], msg=test.diff)
 
 @test
 def test_educationallevel(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
             'schema:inDefinedTermSet': 'http://download.edustandaard.nl/vdex/vdex_context_czp_20060628.xml',
             'schema:name': 'VO'},
         })
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
             '@type': 'schema:DefinedTerm',
@@ -362,18 +359,12 @@ def test_educationallevel(enricher):
 
 @test
 def test_educationallevel_by_id(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
         }})
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
             '@type': 'schema:DefinedTerm',
@@ -386,10 +377,7 @@ def test_educationallevel_by_id(enricher):
 
 @test
 def test_educationallevel_copy(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
             'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
@@ -398,10 +386,7 @@ def test_educationallevel_copy(enricher):
             }
         })
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
             'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
@@ -413,10 +398,7 @@ def test_educationallevel_copy(enricher):
 
 @test
 def test_educationallevel_copy_multi(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    i = example({
         'schema:educationalLevel': [{
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
             },{
@@ -437,10 +419,7 @@ def test_educationallevel_copy_multi(enricher):
         'schema:keywords':['aap', 'noot'],
         })
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
+    x = example({
         'schema:educationalLevel': [{
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
             '@type': 'schema:DefinedTerm',
@@ -470,8 +449,8 @@ def test_educationallevel_copy_multi(enricher):
 
 def prepare_lookup(no_result_for=None):
     looked = []
-    def lookup(p, v):
-        looked.append((p,v))
+    def lookup(v):
+        looked.append(v)
         if v == no_result_for:
             return _l()
         return _l(id='urn:id', identifier='identifier', labels=[('aap', 'nl'), ('ape', 'en')], source='source')
@@ -488,7 +467,7 @@ def test_definition():
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq([('target_p', 'value')], looked)
+    test.eq(['value'], looked)
     test.eq({'has': 'value',
         'target_p': [{
             'value_p': [{'@value': 'aap', '@language': 'nl'},
@@ -511,7 +490,7 @@ def test_definition_not_found():
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq([('target_p', 'value')], looked)
+    test.eq(['value'], looked)
     test.eq({'has': 'value',
         }, r)
 
@@ -533,7 +512,7 @@ def test_definition_not_found():
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq([('target_p', 'orig_value')], looked)
+    test.eq(['orig_value'], looked)
     test.eq({'has': 'value',
         'new_target_p':[{
             '@type':['new_type'],
@@ -544,19 +523,39 @@ def test_definition_not_found():
 
 @test
 def test_text(enricher):
-    i = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
-        'schema:creativeWorkStatus': 'definitief',
-        })
+    i = example({'schema:creativeWorkStatus': 'definitief'})
     r = enricher(i[0])
-    x = jsonld.expand({
-        '@context':{'schema':schema},
-        '@id': 'some:id',
-        'schema:name': 'Name',
-        'schema:creativeWorkStatus': 'final',
-        })
-    # pprint([r])
-    # pprint(x)
+    x = example({'schema:creativeWorkStatus': 'final'})
     test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_cost(enricher):
+    i = example({'lom:cost': 'ja'})
+    r = enricher(i[0])
+    x = example({'schema:isAccessibleForFree': False})
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_isAccessibleForFree(enricher):
+    i = example({'schema:isAccessibleForFree': False})
+    r = enricher(i[0])
+    x = example({'schema:isAccessibleForFree': False})
+    test.eq(x[0],r, msg=test.diff)
+
+    i = example({'schema:isAccessibleForFree': 'false'})
+    r = enricher(i[0])
+    x = example({'schema:isAccessibleForFree': False})
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_enrich_info():
+    enrich_lookup_info = prepare_enrich(lookup_for_test)[1]
+    test.eq({
+        'lom:aggregationLevel': 'urn:lms:aggregationlevel',
+        'schema:audience': 'urn:lms:intendedenduserrole',
+        'schema:creativeWorkStatus': 'urn:lms:status',
+        'schema:educationalLevel': 'urn:lms:educationallevel',
+        'schema:encodingFormat': 'urn:lms:mimetype',
+        'schema:interactivityType': 'urn:lms:interactivitytype',
+        'schema:isAccessibleForFree': 'urn:lms:cost',
+        }, enrich_lookup_info, msg=test.diff)
