@@ -165,6 +165,11 @@ def license(target_p, lookup):
                 r_other.append({'@value': v})
                 for v,lang in l.labels:
                     r_notice.append(as_value(v,lang))
+        if not r_license: #nothing new, keep old stuff
+            r_other = s.get(lom+'copyrightAndOtherRestrictions', [])
+            r_notice = s.get(schema+'copyrightNotice', [])
+            r_license = s.get(schema+'license', [])
+
         new = {k:v for k,v in [
                 (lom+'copyrightAndOtherRestrictions', r_other),
                 (schema+'copyrightNotice', r_notice),
@@ -593,6 +598,12 @@ def test_license(enricher):
     i = example({
         'lom:copyrightAndOtherRestrictions': 'some unresolvable text',
         'schema:copyrightNotice': 'Notice stays'})
+    r = enricher(i[0])
+    x = example({
+        'lom:copyrightAndOtherRestrictions': 'some unresolvable text',
+        'schema:copyrightNotice': 'Notice stays'})
+    test.eq(x[0],r, msg=test.diff)
+
     i = example({
         'schema:copyrightNotice': 'Notice stays'})
     # from schema:license
