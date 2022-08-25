@@ -45,7 +45,7 @@ setup(
     packages=packages,
     author='Seecr',
     author_email='info@seecr.nl',
-    url='https://github.com/seecr/metastreams',
+    url='https://github.com/seecr/kennisnet-jsonld',
     classifiers=[
         'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
         'Programming Language :: Python :: 3',
