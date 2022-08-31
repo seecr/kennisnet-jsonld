@@ -764,6 +764,13 @@ def test_license(enricher):
     # from schema:license
 
 @test
+def uuid_pretty_print():
+    test.eq('http://uri/no_uuid', pretty_print_uuid('http://uri/no_uuid'))
+    test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6', pretty_print_uuid('http://uri/B79AA975CFC24FBB90939B4A2E7B05A6'))
+    test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6', pretty_print_uuid('http://uri/b79aa975cfc24fbb90939b4a2e7b05a6'))
+    test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6?ARST', pretty_print_uuid('http://uri/b79aa975cfc24fbb90939b4a2e7b05a6?ARST'))
+
+@test
 def test_enrich_info():
     enrich_lookup_info = prepare_enrich(lookup_for_test)[1]
     test.eq({
