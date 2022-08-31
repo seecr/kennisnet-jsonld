@@ -195,10 +195,13 @@ def copy_if_slo_or_begrippenkader(source):
         return 'default'
     return switch_fn
 
-def copy_data(target_p, prepend=False):
+
+def copy_data(target_p, rules=None, prepend=False):
+    cw = (lambda x:x) if rules is None else walk(rules)
     def copy_fn(a,s,p,os):
         n = a.get(target_p, [])
-        c = (list(os)+n) if prepend else (n+list(os))
+        result = [cw(o) for o in os]
+        c = (result+n) if prepend else (n+result)
         return a | {target_p:c}
     return copy_fn
 
@@ -218,6 +221,17 @@ def is_boolean(a,s,p,os):
 def _key(full):
     return full.replace(schema, 'schema:').replace(lom, 'lom:').replace(dcterms, 'dcterms:')
 
+keyword_definition = dict(
+        target_p=schema+'keywords',
+        type=schema+'DefinedTerm',
+        value_p=schema+'name',
+        identifier_p=schema+'termCode',
+        source_p=schema+'inDefinedTermSet',
+    )
+import re, uuid
+uuid_r = re.compile(r'(?i)[a-f0-9\-]{32,36}')
+def pretty_print_uuid(s):
+    return uuid_r.sub(lambda m:str(uuid.UUID(m.group(0))), s)
 
 def prepare_enrich(lookup=None):
     info = {'lookup':{}, 'translations':{}}
@@ -229,14 +243,29 @@ def prepare_enrich(lookup=None):
             return lookup(key=key, scheme=scheme, value=value)
         return dict(target_p=target_p, lookup=lookup_fn)
 
-    keyword_definition = dict(
-            target_p=schema+'keywords',
-            type=schema+'DefinedTerm',
-            value_p=schema+'name',
-            identifier_p=schema+'termCode',
-            source_p=schema+'inDefinedTermSet',
-        )
+    def label_lookup_fn(target_p, scheme):
+        key = _key(target_p)+'.id_for_label'
+        info['lookup'][key] = scheme
+
+        def fn(a,s,p,os):
+            if '@id' in a or scheme+'name' in a:
+                return a
+            at_id = s.get('@id')
+            names = s.get(schema+'name',[])
+            r = {}
+            if at_id:
+                at_id = pretty_print_uuid(at_id)
+                r['@id'] = at_id
+                lr = lookup(key=key, scheme=scheme, value=at_id)
+                if lr.labels:
+                    names = [{'@language':lang, '@value': value} for value, lang in lr.labels]
+            if names:
+                r[schema+'name'] = names
+            return a|r
+        return fn
+
     license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
+
     _rules = {
         schema+'keywords': copy_data(schema+'keywords', prepend=True),
         schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
@@ -260,9 +289,11 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'educationalAlignment', 'urn:lms:disciplinemapping'),
                 ),
-            'copy': copy_data(
-                    target_p=schema+'educationalAlignment',
-                ),
+            'copy': copy_data(schema+'educationalAlignment', {
+                    '*': identity,
+                    '@id': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
+                    schema+'name': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
+                }),
             }, 'copy_if_slo_begrippenkader'),
         schema+'educationalLevel': ({
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
@@ -274,9 +305,11 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'educationalLevel', 'urn:lms:educationallevel'),
                 ),
-            'copy': copy_data(
-                    target_p=schema+'educationalLevel',
-                ),
+            'copy': copy_data(schema+'educationalLevel', {
+                    '*': identity,
+                    '@id': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
+                    schema+'name': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
+                }),
             }, 'copy_if_slo_begrippenkader'),
         schema+'teaches': ({
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
@@ -288,9 +321,11 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'teaches', 'urn:lms:po_kerndoel'),
                 ),
-            'copy': copy_data(
-                    target_p=schema+'teaches',
-                ),
+            'copy': copy_data(schema+'teaches', {
+                    '*': identity,
+                    '@id': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
+                    schema+'name': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
+                }),
             }, 'copy_if_slo_begrippenkader'),
         schema+'license': (license_fn, 'license'),
         schema+'copyrightNotice': (license_fn, 'license'),
@@ -351,6 +386,10 @@ testlookupdata = {
     },
     'urn:lms:license': {
         'cc-by-40': _l(uri='http://creativecommons.org/licenses/by/4.0/', labels=[("CC BY 4.0", 'nl')]),
+    },
+    'urn:edurep:conceptset': {
+        'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(labels=[("Nederlandse tekst", 'nl')]),
+        'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(labels=[('Improved', 'en')]),
     },
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
@@ -479,6 +518,71 @@ def test_educationallevel_copy(enricher):
             'schema:name': {'@language': 'nl',
                             '@value': 'Copy'},
             }
+        })
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_with_lookup(enricher):
+    i = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/my_nl',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'my_nl'},
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/my_nl',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Nederlandse tekst'},
+            'schema:termCode': 'my_nl'},
+        })
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_with_lookup_not_found(enricher):
+    i = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/made_up',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Made Up Tekst'},
+            'schema:termCode': 'made_up'},
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/made_up',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Made Up Tekst'},
+            'schema:termCode': 'made_up'},
+        })
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_with_lookup(enricher):
+    i = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/B79AA975CFC24FBB90939B4A2E7B05A6',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6'},
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:educationalLevel': {
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'en',
+                            '@value': 'Improved'},
+            'schema:termCode': 'b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6'},
         })
     test.eq(x[0],r, msg=test.diff)
 
@@ -669,8 +773,11 @@ def test_enrich_info():
             'schema:audience': 'urn:lms:intendedenduserrole',
             'schema:creativeWorkStatus': 'urn:lms:status',
             'schema:educationalLevel': 'urn:lms:educationallevel',
+            'schema:educationalLevel.id_for_label': 'urn:edurep:conceptset',
             'schema:educationalAlignment': 'urn:lms:disciplinemapping',
+            'schema:educationalAlignment.id_for_label': 'urn:edurep:conceptset',
             'schema:teaches': 'urn:lms:po_kerndoel',
+            'schema:teaches.id_for_label': 'urn:edurep:conceptset',
             'schema:encodingFormat': 'urn:lms:mimetype',
             'schema:interactivityType': 'urn:lms:interactivitytype',
             'schema:isAccessibleForFree': 'urn:lms:cost',
