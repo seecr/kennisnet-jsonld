@@ -231,7 +231,10 @@ keyword_definition = dict(
 import re, uuid
 uuid_r = re.compile(r'(?i)[a-f0-9\-]{32,36}')
 def pretty_print_uuid(s):
-    return uuid_r.sub(lambda m:str(uuid.UUID(m.group(0))), s)
+    try:
+        return uuid_r.sub(lambda m:str(uuid.UUID(m.group(0))), s)
+    except ValueError:
+        return s
 
 def prepare_enrich(lookup=None):
     info = {}
@@ -772,6 +775,9 @@ def uuid_pretty_print():
     test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6', pretty_print_uuid('http://uri/B79AA975CFC24FBB90939B4A2E7B05A6'))
     test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6', pretty_print_uuid('http://uri/b79aa975cfc24fbb90939b4a2e7b05a6'))
     test.eq('http://uri/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6?ARST', pretty_print_uuid('http://uri/b79aa975cfc24fbb90939b4a2e7b05a6?ARST'))
+    for same in ['http://purl.edustandaard.nl/begrippenkader//0a715024-bacd-41ed-9ac8-134be6c03f7',
+            '/0a715024-bacd-41ed-9ac8-134be6c03f7']:
+        test.eq(same, pretty_print_uuid(same))
 
 @test
 def test_enrich_info():
