@@ -130,6 +130,7 @@ def definition(target_p, lookup, not_found_definition=None, **kwargs):
         return a | addition
     return check_fn
 
+
 def text(target_p, lookup):
     def text_fn(a,s,p,os):
         result = a.get(target_p, [])
@@ -195,6 +196,26 @@ def copy_if_slo_or_begrippenkader(source):
         return 'default'
     return switch_fn
 
+def copy_definition(target_p, lookup, **kwargs):
+    _, definition_build = _definition_fns(**kwargs)
+    def copy_fn(a,s,p,os):
+        result = a.get(target_p, [])
+        for o in os:
+            o2 = None
+            at_id = o.get('@id')
+            if at_id:
+                at_id = pretty_print_uuid(at_id)
+                o['@id'] = at_id
+                lr = lookup(value=at_id)
+                if lr.labels:
+                    o[schema+'name'] = [{'@language':lang, '@value': value} for value, lang in lr.labels]
+                if lr.exactMatch:
+                    o2 = definition_build(lookup(value=lr.exactMatch))
+            result.append(o)
+            if not o2 is None:
+                result.append(o2)
+        return a | {target_p: result}
+    return copy_fn
 
 def copy_data(target_p, rules=None, prepend=False):
     cw = (lambda x:x) if rules is None else walk(rules)
@@ -238,35 +259,14 @@ def pretty_print_uuid(s):
 
 def prepare_enrich(lookup=None):
     info = {}
-    def target_and_lookup(target_p, scheme):
+    def target_and_lookup(target_p, scheme, key_suffix=''):
         key = _key(target_p)
+        lookup_key = key + key_suffix
         # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
-        info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': key}
+        info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': lookup_key}
         def lookup_fn(value):
-            return lookup(key=key, scheme=scheme, value=value)
+            return lookup(key=lookup_key, scheme=scheme, value=value)
         return dict(target_p=target_p, lookup=lookup_fn)
-
-    def label_lookup_fn(target_p, scheme):
-        field_key = _key(target_p)
-        key = field_key+'.id_for_label'
-        info.setdefault(field_key, {}).setdefault('lookups', {})[scheme] = {'invalid': key}
-
-        def fn(a,s,p,os):
-            if '@id' in a or scheme+'name' in a:
-                return a
-            at_id = s.get('@id')
-            names = s.get(schema+'name',[])
-            r = {}
-            if at_id:
-                at_id = pretty_print_uuid(at_id)
-                r['@id'] = at_id
-                lr = lookup(key=key, scheme=scheme, value=at_id)
-                if lr.labels:
-                    names = [{'@language':lang, '@value': value} for value, lang in lr.labels]
-            if names:
-                r[schema+'name'] = names
-            return a|r
-        return fn
 
     license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
 
@@ -294,11 +294,13 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'educationalAlignment', 'urn:lms:disciplinemapping'),
                 ),
-            'copy': copy_data(schema+'educationalAlignment', {
-                    '*': identity,
-                    '@id': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
-                    schema+'name': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
-                }),
+            'copy': copy_definition(
+                    type=schema+'AlignmentObject',
+                    value_p=schema+'name',
+                    identifier_p=schema+'targetName',
+                    source_p=schema+'educationalFramework',
+                    **target_and_lookup(schema+'educationalAlignment', 'urn:edurep:conceptset', '.id_for_label')
+                ),
             },
         schema+'educationalLevel': {
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
@@ -311,11 +313,13 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'educationalLevel', 'urn:lms:educationallevel'),
                 ),
-            'copy': copy_data(schema+'educationalLevel', {
-                    '*': identity,
-                    '@id': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
-                    schema+'name': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
-                }),
+            'copy': copy_definition(
+                    type=schema+'DefinedTerm',
+                    value_p=schema+'name',
+                    identifier_p=schema+'termCode',
+                    source_p=schema+'inDefinedTermSet',
+                    **target_and_lookup(schema+'educationalLevel', 'urn:edurep:conceptset', '.id_for_label')
+                ),
             },
         schema+'teaches': {
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
@@ -328,11 +332,13 @@ def prepare_enrich(lookup=None):
                     not_found_definition=keyword_definition,
                     **target_and_lookup(schema+'teaches', 'urn:lms:po_kerndoel'),
                 ),
-            'copy': copy_data(schema+'teaches', {
-                    '*': identity,
-                    '@id': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
-                    schema+'name': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
-                }),
+            'copy': copy_definition(
+                    type=schema+'DefinedTerm',
+                    value_p=schema+'name',
+                    identifier_p=schema+'termCode',
+                    source_p=schema+'inDefinedTermSet',
+                    **target_and_lookup(schema+'teaches', 'urn:edurep:conceptset', '.id_for_label')
+                ),
             },
         schema+'license': license_fn,
         schema+'copyrightNotice': license_fn,
@@ -359,7 +365,7 @@ from autotest import test
 from pprint import pprint
 from collections import namedtuple
 
-_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri'], defaults=[None, None, None, list(), None])
+_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch'], defaults=[None, None, None, list(), None, None])
 
 
 testlookupdata = {
@@ -396,6 +402,8 @@ testlookupdata = {
     'urn:edurep:conceptset': {
         'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(labels=[("Nederlandse tekst", 'nl')]),
         'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(labels=[('Improved', 'en')]),
+        'uri:has_match': _l(id='uri:has_match', source='uri:source', labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
+        'uri:matches': _l(id='uri:matches', source='uri:source', labels=[("Hetzelfde", 'nl')]),
     },
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
@@ -641,6 +649,34 @@ def test_educationallevel_copy_multi(enricher):
                             '@value': 'Voortgezet Onderwijs'},
             }]
         })
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_with_lookup_and_match(enricher):
+    i = example({
+        'schema:educationalLevel': {
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'some code'},
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:educationalLevel': [{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Heeft overeenkomst'},
+            'schema:termCode': 'some code'
+            },{
+            '@id': 'uri:matches',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'uri:source',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Hetzelfde'},
+            },
+        ]})
     test.eq(x[0],r, msg=test.diff)
 
 def prepare_lookup(no_result_for=None):
