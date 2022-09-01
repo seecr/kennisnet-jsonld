@@ -151,11 +151,11 @@ def cost(target_p, lookup):
 
 
 def license(target_p, lookup):
-    '''Op basis van lom:copyrightAndOtherRestrictions wordt een lookup gedaan.
-    Bij succesvolle lookup worden de velden lom:copyrightAndOtherRestrictions, schema:license en schema:copyrightNotice gevuld.
-    In andere gevallen wordt de huidige data overgenomen'''
 
     def license_fn(a, s, p, os):
+        '''Op basis van lom:copyrightAndOtherRestrictions wordt een lookup gedaan.
+        Bij succesvolle lookup worden de velden lom:copyrightAndOtherRestrictions, schema:license en schema:copyrightNotice gevuld.
+        In andere gevallen wordt de huidige data overgenomen'''
         r_other = a.get(lom+'copyrightAndOtherRestrictions', [])
         r_notice = a.get(schema+'copyrightNotice', [])
         r_license = a.get(schema+'license', [])
@@ -183,7 +183,7 @@ def license(target_p, lookup):
     return license_fn
 
 def copy_if_slo_or_begrippenkader(source):
-    '''Als de waardes zijn opgenomen in 'http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid' of 'http://purl.edustandaard.nl/concept' worden de waardes gekopieerd. Zo niet wordt er een lookup gedaan.'''
+    '''Als de waardes zijn opgenomen in 'http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid' of 'http://purl.edustandaard.nl/concept' worden de waardes gekopieerd waarbij labels worden aangevuld. In het andere geval worden de juiste velden toegevoegd op basis van het genoemde schema.'''
     copy_starters = ['http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid', 'http://purl.edustandaard.nl/concept']
     def switch_fn(a, s):
         termSet = getp_first_value(s, source)
@@ -234,18 +234,19 @@ def pretty_print_uuid(s):
     return uuid_r.sub(lambda m:str(uuid.UUID(m.group(0))), s)
 
 def prepare_enrich(lookup=None):
-    info = {'lookup':{}, 'translations':{}}
+    info = {}
     def target_and_lookup(target_p, scheme):
         key = _key(target_p)
         # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
-        info['lookup'][key] = scheme
+        info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': key}
         def lookup_fn(value):
             return lookup(key=key, scheme=scheme, value=value)
         return dict(target_p=target_p, lookup=lookup_fn)
 
     def label_lookup_fn(target_p, scheme):
-        key = _key(target_p)+'.id_for_label'
-        info['lookup'][key] = scheme
+        field_key = _key(target_p)
+        key = field_key+'.id_for_label'
+        info.setdefault(field_key, {}).setdefault('lookups', {})[scheme] = {'invalid': key}
 
         def fn(a,s,p,os):
             if '@id' in a or scheme+'name' in a:
@@ -266,7 +267,7 @@ def prepare_enrich(lookup=None):
 
     license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
 
-    _rules = {
+    rules = {
         schema+'keywords': copy_data(schema+'keywords', prepend=True),
         schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
         schema+'interactivityType': text(**target_and_lookup(schema+'interactivityType', 'urn:lms:interactivitytype')),
@@ -279,8 +280,9 @@ def prepare_enrich(lookup=None):
                 type=schema+'Audience',
                 identifier_p=schema+'audienceType',
                 **target_and_lookup(schema+'audience', 'urn:lms:intendedenduserrole')),
-        schema+'educationalAlignment': ({
+        schema+'educationalAlignment': {
             '__switch__': copy_if_slo_or_begrippenkader(schema+'educationalFramework'),
+            'documentation': copy_if_slo_or_begrippenkader.__doc__,
             'default': definition(
                     type=schema+'AlignmentObject',
                     value_p=schema+'name',
@@ -294,9 +296,10 @@ def prepare_enrich(lookup=None):
                     '@id': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
                     schema+'name': label_lookup_fn(schema+'educationalAlignment', 'urn:edurep:conceptset'),
                 }),
-            }, 'copy_if_slo_begrippenkader'),
-        schema+'educationalLevel': ({
+            },
+        schema+'educationalLevel': {
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
+            'documentation': copy_if_slo_or_begrippenkader.__doc__,
             'default': definition(
                     type=schema+'DefinedTerm',
                     value_p=schema+'name',
@@ -310,9 +313,10 @@ def prepare_enrich(lookup=None):
                     '@id': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
                     schema+'name': label_lookup_fn(schema+'educationalLevel', 'urn:edurep:conceptset'),
                 }),
-            }, 'copy_if_slo_begrippenkader'),
-        schema+'teaches': ({
+            },
+        schema+'teaches': {
             '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
+            'documentation': copy_if_slo_or_begrippenkader.__doc__,
             'default': definition(
                     type=schema+'DefinedTerm',
                     value_p=schema+'name',
@@ -326,27 +330,26 @@ def prepare_enrich(lookup=None):
                     '@id': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
                     schema+'name': label_lookup_fn(schema+'teaches', 'urn:edurep:conceptset'),
                 }),
-            }, 'copy_if_slo_begrippenkader'),
-        schema+'license': (license_fn, 'license'),
-        schema+'copyrightNotice': (license_fn, 'license'),
-        lom+'copyrightAndOtherRestrictions': (license_fn, 'license'),
+            },
+        schema+'license': license_fn,
+        schema+'copyrightNotice': license_fn,
+        lom+'copyrightAndOtherRestrictions': license_fn,
         '*': identity,
     }
-    rules = {}
-    for k, rule in _rules.items():
-        if isinstance(rule, tuple):
-            rule, rule_info = rule
-            info['translations'][_key(k)] = explanations[rule_info]
-        rules[k] = rule
+    for k, v in rules.items():
+        doc = None
+        if callable(v):
+            doc = v.__doc__
+        elif isinstance(v, dict):
+            doc = v.get('documentation')
+        if doc is None:
+            continue
+        info.setdefault(_key(k), {})['documentation'] = doc
 
     return walk(rules), info
 
-explanations = {
-        'license': license.__doc__,
-        'copy_if_slo_begrippenkader': copy_if_slo_or_begrippenkader.__doc__ + ''' Als de waardes bij een lookup niet worden gevonden worden ze toegevoegd aan schema:keywords''',
-    }
 
-__all__ = ['prepare_enrich', 'explanations']
+__all__ = ['prepare_enrich']
 
 from pyld import jsonld
 from autotest import test
@@ -774,29 +777,47 @@ def uuid_pretty_print():
 def test_enrich_info():
     enrich_lookup_info = prepare_enrich(lookup_for_test)[1]
     test.eq({
-        'lookup': {
-            'dcterms:accessRights': 'urn:lms:accessrights',
-            'lom:aggregationLevel': 'urn:lms:aggregationlevel',
-            'schema:audience': 'urn:lms:intendedenduserrole',
-            'schema:creativeWorkStatus': 'urn:lms:status',
-            'schema:educationalLevel': 'urn:lms:educationallevel',
-            'schema:educationalLevel.id_for_label': 'urn:edurep:conceptset',
-            'schema:educationalAlignment': 'urn:lms:disciplinemapping',
-            'schema:educationalAlignment.id_for_label': 'urn:edurep:conceptset',
-            'schema:teaches': 'urn:lms:po_kerndoel',
-            'schema:teaches.id_for_label': 'urn:edurep:conceptset',
-            'schema:encodingFormat': 'urn:lms:mimetype',
-            'schema:interactivityType': 'urn:lms:interactivitytype',
-            'schema:isAccessibleForFree': 'urn:lms:cost',
-            'schema:license': 'urn:lms:license',
-        },
-        'translations':{
-            'schema:educationalLevel': explanations['copy_if_slo_begrippenkader'],
-            'schema:educationalAlignment': explanations['copy_if_slo_begrippenkader'],
-            'schema:teaches': explanations['copy_if_slo_begrippenkader'],
-            'schema:license': explanations['license'],
-            'lom:copyrightAndOtherRestrictions': explanations['license'],
-            'schema:copyrightNotice': explanations['license'],
-
-        }
+        'dcterms:accessRights': {
+            'lookups': {
+                'urn:lms:accessrights': {'invalid': 'dcterms:accessRights'}}},
+        'lom:aggregationLevel': {
+            'lookups': {
+                'urn:lms:aggregationlevel': {'invalid': 'lom:aggregationLevel'}}},
+        'lom:copyrightAndOtherRestrictions': {
+            'documentation': test.any,},
+        'schema:audience': {
+            'lookups': {
+                'urn:lms:intendedenduserrole': {'invalid': 'schema:audience'}}},
+        'schema:copyrightNotice': {
+            'documentation': test.any,},
+        'schema:creativeWorkStatus': {
+            'lookups': {
+                'urn:lms:status': {'invalid': 'schema:creativeWorkStatus'}}},
+        'schema:educationalAlignment': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:edurep:conceptset': {'invalid': 'schema:educationalAlignment.id_for_label'},
+                'urn:lms:disciplinemapping': {'invalid': 'schema:educationalAlignment'}}},
+        'schema:educationalLevel': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:edurep:conceptset': {'invalid': 'schema:educationalLevel.id_for_label'},
+                'urn:lms:educationallevel': {'invalid': 'schema:educationalLevel'}}},
+        'schema:encodingFormat': {
+            'lookups': {
+                'urn:lms:mimetype': {'invalid': 'schema:encodingFormat'}}},
+        'schema:interactivityType': {
+            'lookups': {
+                'urn:lms:interactivitytype': {'invalid': 'schema:interactivityType'}}},
+        'schema:isAccessibleForFree': {
+            'lookups': {'urn:lms:cost': {'invalid': 'schema:isAccessibleForFree'}}},
+        'schema:license': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:lms:license': {'invalid': 'schema:license'}}},
+        'schema:teaches': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:edurep:conceptset': {'invalid': 'schema:teaches.id_for_label'},
+                'urn:lms:po_kerndoel': {'invalid': 'schema:teaches'}}}
         }, enrich_lookup_info, msg=test.diff)
