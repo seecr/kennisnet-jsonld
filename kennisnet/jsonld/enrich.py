@@ -184,7 +184,9 @@ def license(target_p, lookup):
     return license_fn
 
 def copy_if_slo_or_begrippenkader(source):
-    '''Als de waardes zijn opgenomen in 'http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid' of 'http://purl.edustandaard.nl/concept' worden de waardes gekopieerd waarbij labels worden aangevuld. In het andere geval worden de juiste velden toegevoegd op basis van het genoemde schema.'''
+    '''Als de waardes zijn opgenomen in 'http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid' of 'http://purl.edustandaard.nl/concept' worden de waardes gekopieerd waarbij labels worden aangevuld. Bij het zoeken worden begrippen die hetzelfde zijn ook toegevoegd, op basis van skos:exactMatch. Dit gebeurt alleen voor begrippen in urn:edurep:conceptset.
+
+    Als het geen begrippenkader/SLO waardes is worden de juiste velden toegevoegd op basis van het genoemde schema.'''
     copy_starters = ['http://purl.edustandaard.nl/begrippenkader', 'https://opendata.slo.nl/curriculum/uuid', 'http://purl.edustandaard.nl/concept']
     def switch_fn(a, s):
         termSet = getp_first_value(s, source)
@@ -213,7 +215,8 @@ def copy_definition(target_p, lookup, **kwargs):
                     o2 = definition_build(lookup(value=lr.exactMatch))
             result.append(o)
             if not o2 is None:
-                result.append(o2)
+                if not any(o2['@id'] == i.get('@id') for i in result):
+                    result.append(o2)
         return a | {target_p: result}
     return copy_fn
 
@@ -402,8 +405,8 @@ testlookupdata = {
     'urn:edurep:conceptset': {
         'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(labels=[("Nederlandse tekst", 'nl')]),
         'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(labels=[('Improved', 'en')]),
-        'uri:has_match': _l(id='uri:has_match', source='uri:source', labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
-        'uri:matches': _l(id='uri:matches', source='uri:source', labels=[("Hetzelfde", 'nl')]),
+        'uri:has_match': _l(id='uri:has_match', source='http://purl.edustandaard.nl/concept', labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
+        'uri:matches': _l(id='uri:matches', source='http://purl.edustandaard.nl/concept', labels=[("Hetzelfde", 'nl')]),
     },
 }
 testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d'] = testlookupdata['urn:lms:educationallevel']['VO']
@@ -672,11 +675,46 @@ def test_educationallevel_copy_with_lookup_and_match(enricher):
             },{
             '@id': 'uri:matches',
             '@type': 'schema:DefinedTerm',
-            'schema:inDefinedTermSet': 'uri:source',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/concept',
             'schema:name': {'@language': 'nl',
                             '@value': 'Hetzelfde'},
             },
         ]})
+    test.eq(x[0],r, msg=test.diff)
+
+@test
+def test_educationallevel_copy_with_lookup_and_match_already_present(enricher):
+    i = example({
+        'schema:educationalLevel': [{
+            '@id': 'uri:matches',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'some code',
+         },{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'some code'
+        }],
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:educationalLevel': [{
+            '@id': 'uri:matches',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Hetzelfde'},
+            'schema:termCode': 'some code',
+         },{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Heeft overeenkomst'},
+            'schema:termCode': 'some code'
+        }],
+        })
     test.eq(x[0],r, msg=test.diff)
 
 def prepare_lookup(no_result_for=None):
