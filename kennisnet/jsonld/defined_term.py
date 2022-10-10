@@ -33,6 +33,12 @@ def with_predicate(target_p):
         return a | {target_p:a.get(target_p, ()) + os}
     return fn
 
+def safe_copy(prepend=False):
+    def copy_fn(a,s,p,os):
+        current = a.get(p, ())
+        result = os
+        return a | {p:(result+current) if prepend else (current+result)}
+    return copy_fn
 
 definition_rules = {
     '@type': identity,
@@ -107,40 +113,54 @@ from autotest import test
 
 class teaches:
     rules = {
+        schema+'keywords': safe_copy(prepend=True),
         schema+'teaches': defined_term(schema+'teaches'),
     }
     w=walk(rules)
 
     @test
     def move_data_to_keywords():
-        start = {schema+'teaches':({
-            '@type': (schema+'DefinedTerm',),
-            schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-        },)}
+        start = {
+            schema+'teaches':({
+                '@type': (schema+'DefinedTerm',),
+                schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+            },),
+            schema+'keywords': ({'@value': 'Keyword'},),
+        }
 
         result = w(start)
-        test.eq({schema+'keywords':({
-            '@type': (schema+'DefinedTerm',),
-            schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-        },)}, result, msg=test.diff2)
+        test.eq({
+            schema+'keywords':({
+                '@value': 'Keyword',
+            },{
+                '@type': (schema+'DefinedTerm',),
+                schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+            },)
+        }, result, msg=test.diff2)
 
     @test
     def keep_data():
-        start = {schema+'teaches':({
-            '@type': (schema+'DefinedTerm',),
-            '@id': "urn:uuid:onderwijs",
-            schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-        },)}
+        start = {
+            schema+'teaches':({
+                '@type': (schema+'DefinedTerm',),
+                '@id': "urn:uuid:onderwijs",
+                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+            },),
+            schema+'keywords': ({'@value': 'Keyword'},),
+        }
         result = w(start)
-        test.eq({schema+'teaches':({
-            '@type': (schema+'DefinedTerm',),
-            '@id': "urn:uuid:onderwijs",
-            schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-        },)}, result, msg=test.diff2)
+        test.eq({
+            schema+'teaches':({
+                '@type': (schema+'DefinedTerm',),
+                '@id': "urn:uuid:onderwijs",
+                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+            },),
+            schema+'keywords': ({'@value': 'Keyword'},),
+        }, result, msg=test.diff2)
 
 class educationalAlignment:
     rules = {
@@ -178,6 +198,37 @@ class educationalAlignment:
             '@id': "urn:uuid:onderwijs",
             schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
         },)}, result, msg=test.diff2)
+
+    @test
+    def keep_some():
+        start = {
+            schema+'educationalAlignment':({
+                '@type': (schema+'AlignmentObject',),
+                schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+                '@id': "urn:uuid:onderwijs",
+                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
+            },{
+                '@type': (schema+'AlignmentObject',),
+                schema+'educationalFramework': ({'@value': 'unknown:framework'},),
+                '@id': "urn:uuid:onderwijs",
+                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
+            },)
+        }
+        result = w(start)
+        test.eq({
+            schema+'educationalAlignment':({
+                '@type': (schema+'AlignmentObject',),
+                schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+                '@id': "urn:uuid:onderwijs",
+                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
+            },),
+            schema+'keywords': ({
+                '@type': (schema+'DefinedTerm',),
+                schema+'inDefinedTermSet': ({'@value': 'unknown:framework'},),
+                '@id': "urn:uuid:onderwijs",
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+            },),
+        }, result, msg=test.diff2)
 
 @test
 def test_is_curriculum_waarde():
