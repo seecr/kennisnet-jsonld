@@ -24,12 +24,9 @@
 ## end license ##
 
 from metastreams.jsonld import walk, identity, ignore_silently
+from .defined_term import defined_term
+from .ns import *
 
-
-schema = 'https://schema.org/'
-dcterms = "http://purl.org/dc/terms/"
-lom = "http://ltsc.ieee.org/xsd/LOM#"
-prov: "http://www.w3.org/ns/prov#"
 
 def getp_first_value(d, p):
     for i in d.get(p, []):
