@@ -123,7 +123,7 @@ def prep_improve_keyword(lookup):
 def improve_keywords(lookup):
     improve_keyword = prep_improve_keyword(lookup)
     def keywords_fn(a,s,p,os):
-        newdata = {p:[]}
+        newdata = {p:list(a.get(p, ()))}
         for keyword in os:
             if keyword.get('@type') != (schema+'DefinedTerm',):
                 newdata[p].append(keyword)
@@ -147,10 +147,7 @@ def defined_term(target_p, lookup):
     improve_keyword = prep_improve_keyword(lookup)
 
     def defined_term_fn(a,s,p,os):
-        results = {
-            keywords_target_p: a.get(keywords_target_p, ()),
-            target_p: a.get(target_p, ()),
-        }
+        results = {}
         for term in os:
             if is_curriculum_waarde_in_term(term, inDefinedTermSet):
                 target = target_p
@@ -159,6 +156,8 @@ def defined_term(target_p, lookup):
                 target = keywords_target_p
                 result = to_keywords_walk(term)
                 target, result = improve_keyword(result)
+            if not target in results:
+                results[target] = a.get(target, ())
             results[target] += (result,)
         return a|{k:v for k,v in results.items() if v}
     return defined_term_fn
@@ -334,7 +333,9 @@ class keywords_flow_2_1:
                 labels=[('WO - Master', 'nl'), ('WO Master', 'nl')],
                 type=edurep_terms+'EducationalLevel',
             ),
+            'zo maar': _l(),
         }[termCode]
+
     rules = {
         schema+'keywords': improve_keywords(zoekDefinedTerm),
         schema+'teaches': defined_term(schema+'teaches', zoekDefinedTerm),
@@ -411,7 +412,22 @@ class keywords_flow_2_1:
                 '@type': (schema+'DefinedTerm',),
                 schema+'termCode': ({'@value': 'urn:uuid:rekenen'},),
                 schema+'name': ({'@value': 'Hello, my name is...'},),
+            },{
+                '@type': (schema+'DefinedTerm',),
+                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},),
+                schema+'name': ({'@value': 'Eigenlijk schema:educationalAlignment'},),
+            },{
+                '@type': (schema+'DefinedTerm',),
+                schema+'termCode': ({'@value': 'zo maar'},),
+                schema+'name': ({'@value': 'Gewoon keyword'},),
             },),
+            schema+'keywords':({
+                '@type': (schema+'DefinedTerm',),
+                schema+'termCode': ({'@value': 'urn:uuid:master'},),
+                schema+'name': ({'@value': 'Eigenlijk schema:educationalLevel'},),
+            },
+            {'@value': 'integratietest'},
+            ),
         }
 
         result = w(start)
@@ -423,6 +439,28 @@ class keywords_flow_2_1:
                 schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
                 schema+'termCode': ({'@value': 'rekenen'},),
                 schema+'name': ({'@language':'nl', '@value': 'Handig rekenen'},),
+            },),
+            schema+'educationalAlignment': ({
+                '@type': (schema+'AlignmentObject',),
+                '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-0000-1111-2222-123456123456',
+                schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+                schema+'targetName': ({'@value': 'onderwijs'},),
+                schema+'name': ({'@language':'nl', '@value': 'Onderwijs'},),
+            },),
+            schema+'educationalLevel': ({
+                '@type': (schema+'DefinedTerm',),
+                '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-2222-3333-4444-123456123456',
+                schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+                schema+'termCode': ({'@value': 'master'},),
+                schema+'name': ({'@language':'nl', '@value': 'WO - Master'},
+                                {'@language':'nl', '@value': 'WO Master'},),
+            },),
+            schema+'keywords':({
+                '@type': (schema+'DefinedTerm',),
+                schema+'termCode': ({'@value': 'zo maar'},),
+                schema+'name': ({'@value': 'Gewoon keyword'},),
+            },{
+                '@value': 'integratietest',
             },),
         }, result, msg=test.diff2)
 
