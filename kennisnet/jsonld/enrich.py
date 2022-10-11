@@ -26,6 +26,7 @@
 from metastreams.jsonld import walk, identity, ignore_silently
 from .defined_term import defined_term
 from .ns import *
+import kennisnet.jsonld.utils as utils
 
 
 def getp_first_value(d, p):
@@ -46,11 +47,6 @@ def first(l):
     except StopIteration:
         return None
 
-def as_value(v,l):
-    if l:
-        return {'@value':v, '@language':l}
-    return {'@value':v}
-
 def values(os):
     for o in os:
         yield o['@value']
@@ -63,7 +59,7 @@ def _definition_fns(type, value_p=None, source_p=None, identifier_p=None):
         new_o = {}
         if value_p:
             for v,lang in l.labels:
-                new_o.setdefault(value_p, []).append(as_value(v,lang))
+                new_o.setdefault(value_p, []).append(utils.as_value(v,lang))
         if identifier_p and l.identifier:
             new_o[identifier_p] = [{'@value': l.identifier}]
         if source_p and l.source:
@@ -166,7 +162,7 @@ def license(target_p, lookup):
                 r_license.append({'@value': l.uri})
                 r_other.append({'@value': v})
                 for v,lang in l.labels:
-                    r_notice.append(as_value(v,lang))
+                    r_notice.append(utils.as_value(v,lang))
         if not r_license: #nothing new, keep old stuff
             r_other = s.get(lom+'copyrightAndOtherRestrictions', [])
             r_notice = s.get(schema+'copyrightNotice', [])

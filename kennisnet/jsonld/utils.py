@@ -23,10 +23,8 @@
 #
 ## end license ##
 
-schema = 'https://schema.org/'
-dcterms = "http://purl.org/dc/terms/"
-lom = "http://ltsc.ieee.org/xsd/LOM#"
-prov = "http://www.w3.org/ns/prov#"
-edurep_terms = 'https://purl.edurep.nl/terms/'
+def as_value(v,l):
+    if l:
+        return {'@value':v, '@language':l}
+    return {'@value':v}
 
-__all__ = ['schema', 'dcterms', 'lom', 'prov', 'edurep_terms']
