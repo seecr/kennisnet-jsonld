@@ -34,13 +34,6 @@ def with_predicate(target_p):
         return a | {target_p:a.get(target_p, ()) + os}
     return fn
 
-# def safe_copy(prepend=False):
-#     def copy_fn(a,s,p,os):
-#         current = a.get(p, ())
-#         result = os
-#         return a | {p:(result+current) if prepend else (current+result)}
-#     return copy_fn
-
 definition_rules = {
     '@type': identity,
     '@id': identity,
@@ -67,7 +60,9 @@ definition_alignment_to_keywords_rules = {
 }
 definition_alignment_keywords_walk = walk(definition_alignment_to_keywords_rules)
 
+
 keywords_target_p = schema+'keywords'
+
 
 curriculum_uris = {
      'http://purl.edustandaard.nl/begrippenkader',
@@ -80,11 +75,14 @@ def _startswith_uri(termId, uri):
 def is_curriculum_waarde_in_term(term, inDefinedTermSet=schema+'inDefinedTermSet'):
     termSet = sfc.get_in(term, (inDefinedTermSet, 0, '@value'))
     if termSet and termSet in curriculum_uris:
-        return bool(term.get('@id'))
+        return bool(term.get('@id')), termSet
     termId = term.get('@id')
-    if termId and any(_startswith_uri(termId, uri) for uri in curriculum_uris):
-        return True
-    return False
+    if termId:
+        for uri in curriculum_uris:
+            if _startswith_uri(termId, uri):
+                return True, uri
+    return False, None
+
 
 def result_to_defined_term(lookup_result, target_p):
     type, termCodeKey, inDefinedTermSetKey = schema+'DefinedTerm', schema+'termCode', schema+'inDefinedTermSet'
@@ -136,7 +134,25 @@ def improve_keywords(lookup):
     return keywords_fn
 
 
-def defined_term(target_p, lookup):
+def prep_improve_definedterm(lookup):
+    def improve_definedterm(term):
+        termId = term.get('@id')
+        if not termId:
+            return term
+        lookup_result = lookup(termId)
+        if not lookup_result.id:
+            #TODO not_found (welk veld???)
+            return term
+        termCodeKey = schema+'targetName' if term.get('@type') == (schema+'AlignmentObject',) else schema+'termCode'
+        if lookup_result.labels:
+            term[schema+'name'] = tuple(utils.as_value(v,l) for v,l in lookup_result.labels)
+        if lookup_result.identifier:
+            term[termCodeKey] = ({'@value': lookup_result.identifier},)
+        return term
+    return improve_definedterm
+
+
+def defined_term(target_p, lookupTermcode, lookupId):
     to_keywords_walk = definition_walk
     copy_walk = definition_walk
     inDefinedTermSet = schema+'inDefinedTermSet'
@@ -144,14 +160,18 @@ def defined_term(target_p, lookup):
         to_keywords_walk = definition_alignment_keywords_walk
         copy_walk = definition_alignment_walk
         inDefinedTermSet = schema+'educationalFramework'
-    improve_keyword = prep_improve_keyword(lookup)
+    improve_keyword = prep_improve_keyword(lookupTermcode)
+    improve_definedterm = prep_improve_definedterm(lookupId)
 
     def defined_term_fn(a,s,p,os):
         results = {}
         for term in os:
-            if is_curriculum_waarde_in_term(term, inDefinedTermSet):
+            is_cur, curriculum_uri = is_curriculum_waarde_in_term(term, inDefinedTermSet)
+            if is_cur:
                 target = target_p
                 result = copy_walk(term)
+                result[inDefinedTermSet] = ({'@value': curriculum_uri},)
+                result = improve_definedterm(result)
             else:
                 target = keywords_target_p
                 result = to_keywords_walk(term)
@@ -175,15 +195,24 @@ _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 
 def test_is_curriculum_waarde():
     def term(id, termSet):
         return {'@id':id, schema+'inDefinedTermSet':({'@value': termSet},)}
-    test.truth(is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/begrippenkader')))
-    test.not_(is_curriculum_waarde_in_term(term('unknown:id', 'my:begrippenkader')))
-    test.truth(is_curriculum_waarde_in_term(term('http://purl.edustandaard.nl/begrippenkader/unknown:id', 'my:begrippenkader')))
-    test.truth(is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/unknown:id'}))
-    test.not_(is_curriculum_waarde_in_term({schema+'inDefinedTermSet':({'@value': 'http://purl.edustandaard.nl/begrippenkader'},)}))
-    test.truth(is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/concept')))
-    test.truth(is_curriculum_waarde_in_term(term('unknown:id', 'https://opendata.slo.nl/curriculum/uuid')))
-    test.not_(is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader'}))
-    test.not_(is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/'}))
+    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
+            is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/begrippenkader')))
+    test.eq((False, None),
+            is_curriculum_waarde_in_term(term('unknown:id', 'my:begrippenkader')))
+    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
+            is_curriculum_waarde_in_term(term('http://purl.edustandaard.nl/begrippenkader/unknown:id', 'my:begrippenkader')))
+    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
+            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/unknown:id'}))
+    test.eq((False, 'http://purl.edustandaard.nl/begrippenkader'),
+            is_curriculum_waarde_in_term({schema+'inDefinedTermSet':({'@value': 'http://purl.edustandaard.nl/begrippenkader'},)}))
+    test.eq((True, 'http://purl.edustandaard.nl/concept'),
+            is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/concept')))
+    test.eq((True, 'https://opendata.slo.nl/curriculum/uuid'),
+            is_curriculum_waarde_in_term(term('unknown:id', 'https://opendata.slo.nl/curriculum/uuid')))
+    test.eq((False, None),
+            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader'}))
+    test.eq((False, None),
+            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/'}))
 
 
 class teaches:
@@ -192,7 +221,7 @@ class teaches:
 
     rules = {
         schema+'keywords': ignore_silently,
-        schema+'teaches': defined_term(schema+'teaches', zoekDefinedTerm),
+        schema+'teaches': defined_term(schema+'teaches', zoekDefinedTerm, lambda i:_l()),
     }
     w=walk(rules)
 
@@ -238,8 +267,17 @@ class teaches:
 class educationalAlignment:
     def zoekDefinedTerm(termCode):
         return _l()
+    def lookupById(id):
+        return {'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456':_l(
+                id='http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
+                identifier='teksten',
+                source='http://purl.edustandaard.nl/begrippenkader',
+                labels=[('Lezen van zakelijke teksten', 'nl')],
+                type=edurep_terms+'Discipline',),
+            }.get(id, _l())
+
     rules = {
-        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', zoekDefinedTerm),
+        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', zoekDefinedTerm, lookupById),
     }
     w=walk(rules)
 
@@ -309,7 +347,25 @@ class educationalAlignment:
             },),
         }, result, msg=test.diff2)
 
-class keywords_flow_2_1:
+    @test
+    def flow2_2_lookup_by_id():
+        start = {schema+'educationalAlignment':({
+            '@type': (schema+'AlignmentObject',),
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
+            schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},),
+            schema+'name':({'@value':'Ondewijs'},),
+        },)}
+        result = w(start)
+        test.eq({schema+'educationalAlignment':({
+            '@type': (schema+'AlignmentObject',),
+            schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
+            schema+'targetName': ({'@value': 'teksten'},),
+            schema+'name':({'@language': 'nl', '@value':'Lezen van zakelijke teksten'},),
+        },)}, result, msg=test.diff2)
+
+
+class keywords_flow:
     def zoekDefinedTerm(termCode):
         return {
             'urn:uuid:onderwijs': _l(
@@ -335,12 +391,22 @@ class keywords_flow_2_1:
             ),
             'zo maar': _l(),
         }[termCode]
+    def zoekId(id):
+        return {
+            'http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456',
+                identifier='aanvulling',
+                source='http://purl.edustandaard.nl/begrippenkader',
+                labels=[('De aanvulling', 'nl')],
+                type=edurep_terms+'Discipline',
+            ),
+        }.get(id, _l())
 
     rules = {
         schema+'keywords': improve_keywords(zoekDefinedTerm),
-        schema+'teaches': defined_term(schema+'teaches', zoekDefinedTerm),
-        schema+'educationalLevel': defined_term(schema+'educationalLevel', zoekDefinedTerm),
-        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', zoekDefinedTerm),
+        schema+'teaches': defined_term(schema+'teaches', zoekDefinedTerm, zoekId),
+        schema+'educationalLevel': defined_term(schema+'educationalLevel', zoekDefinedTerm, zoekId),
+        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', zoekDefinedTerm, zoekId),
     }
     w = walk(rules)
 
@@ -406,7 +472,7 @@ class keywords_flow_2_1:
         }, result, msg=test.diff2)
 
     @test
-    def integrate_flow_1_and_flow_2_1():
+    def integrate_flow_1_and_flow_2():
         start = {
             schema+'teaches':({
                 '@type': (schema+'DefinedTerm',),
@@ -428,6 +494,12 @@ class keywords_flow_2_1:
             },
             {'@value': 'integratietest'},
             ),
+            schema+'educationalAlignment': ({
+                '@type': (schema+'AlignmentObject',),
+                '@id': 'http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456',
+                schema+'targetName': ({'@value': 'weet niet'},),
+                schema+'name': ({'@value': 'een schema:educationalAlignment'},),
+            },)
         }
 
         result = w(start)
@@ -446,6 +518,12 @@ class keywords_flow_2_1:
                 schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
                 schema+'targetName': ({'@value': 'onderwijs'},),
                 schema+'name': ({'@language':'nl', '@value': 'Onderwijs'},),
+            },{
+                '@type': (schema+'AlignmentObject',),
+                '@id': 'http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456',
+                schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+                schema+'targetName': ({'@value': 'aanvulling'},),
+                schema+'name': ({'@language':'nl', '@value': 'De aanvulling'},),
             },),
             schema+'educationalLevel': ({
                 '@type': (schema+'DefinedTerm',),
