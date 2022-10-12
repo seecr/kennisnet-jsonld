@@ -113,9 +113,9 @@ def prep_improve_keyword(lookup):
         termCode = sfc.get_in(d, (schema+'termCode', 0, '@value'))
         l_result = lookup(termCode)
         if not l_result or not l_result.type:
-            return schema+'keywords', d
+            return schema+'keywords', d, None
         target_p = type_to_target[l_result.type]
-        return target_p, result_to_defined_term(l_result, target_p)
+        return target_p, result_to_defined_term(l_result, target_p), l_result.exactMatch
     return improve_keyword
 
 def improve_keywords(lookup):
@@ -127,7 +127,9 @@ def improve_keywords(lookup):
             if keyword.get('@type') != (schema+'DefinedTerm',):
                 newdata[p].append(keyword)
                 continue
-            target_p, keyword = improve_keyword(keyword)
+            target_p, keyword, matches_id = improve_keyword(keyword)
+            if matches_id:
+                newdata.setdefault('exactMatch', []).append((target_p, matches_id))
             if not target_p in newdata:
                 newdata[target_p] = a.get(target_p, [])
             newdata[target_p].append(keyword)
@@ -139,19 +141,19 @@ def improve_keywords(lookup):
 def prep_improve_definedterm(lookup):
     def improve_definedterm(term):
         if not (termId := term.get('@id')):
-            return term
+            return term, None
         termId = utils.pretty_print_uuid(termId)
         lookup_result = lookup(termId)
         if not lookup_result.id:
             #TODO not_found (welk veld???)
-            return term
+            return term, None
         term['@id'] = lookup_result.id
         termCodeKey = schema+'targetName' if term.get('@type') == (schema+'AlignmentObject',) else schema+'termCode'
         if lookup_result.labels:
             term[schema+'name'] = tuple(utils.as_value(v,l) for v,l in lookup_result.labels)
         if lookup_result.identifier:
             term[termCodeKey] = ({'@value': lookup_result.identifier},)
-        return term
+        return term, lookup_result.exactMatch
     return improve_definedterm
 
 
@@ -169,7 +171,7 @@ def defined_term(target_p, lookupTermcode, lookupId):
     improve_definedterm = prep_improve_definedterm(lookupId)
 
     def defined_term_fn(a,s,p,os):
-        results = {}
+        results = {'exactMatch': []}
         for term in os:
             is_cur, curriculum_uri = is_curriculum_waarde_in_term(term, inDefinedTermSet)
             if is_cur:
@@ -177,18 +179,20 @@ def defined_term(target_p, lookupTermcode, lookupId):
                 result = copy_walk(term)
                 result[inDefinedTermSet] = ({'@value': curriculum_uri},)
                 result['@type'] = (type_object,)
-                result = improve_definedterm(result)
+                result, matches_id = improve_definedterm(result)
             else:
                 target = keywords_target_p
                 result = to_keywords_walk(term)
-                target, result = improve_keyword(result)
+                target, result, matches_id = improve_keyword(result)
             if not target in results:
                 results[target] = a.get(target, ())
+            if matches_id:
+                results['exactMatch'].append((target, matches_id))
             results[target] += (result,)
         return a|{k:v for k,v in results.items() if v}
     return defined_term_fn
 
-__all__ = ['defined_term', 'improve_keywords']
+__all__ = ['defined_term', 'improve_keywords', 'result_to_defined_term']
 
 
 from autotest import test
@@ -278,6 +282,7 @@ class educationalAlignment:
                 identifier='teksten',
                 source='http://purl.edustandaard.nl/begrippenkader',
                 labels=[('Lezen van zakelijke teksten', 'nl')],
+                exactMatch='https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456',
                 type=edurep_terms+'Discipline',),
             }.get(id, _l())
 
@@ -361,6 +366,7 @@ class educationalAlignment:
             schema+'name':({'@value':'Ondewijs'},),
         },)}
         result = w(start)
+        test.eq([(schema+'educationalAlignment', 'https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456')], result.pop('exactMatch'))
         test.eq({schema+'educationalAlignment':({
             '@type': (schema+'AlignmentObject',),
             schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
@@ -375,6 +381,7 @@ class educationalAlignment:
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
         },)}
         result = w(start)
+        test.eq([(schema+'educationalAlignment', 'https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456')], result.pop('exactMatch'))
         test.eq({schema+'educationalAlignment':({
             '@type': (schema+'AlignmentObject',),
             schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
@@ -438,7 +445,7 @@ class keywords_flow:
             schema+'name': ({'@value': 'Hello, my name is...'},),
         }
 
-        target, result = improve_keyword(keyword)
+        target, result, matches_id = improve_keyword(keyword)
 
         test.eq({
             '@type': (schema+'DefinedTerm',),
@@ -458,7 +465,7 @@ class keywords_flow:
             schema+'name': ({'@value': 'Hello, my name is...'},),
         }
 
-        target, result = improve_keyword(keyword)
+        target, result, matches_id = improve_keyword(keyword)
 
         test.eq({
             '@type': (schema+'DefinedTerm',),
@@ -479,7 +486,7 @@ class keywords_flow:
             schema+'name': ({'@value': 'Hello, my name is...'},),
         }
 
-        target, result = improve_keyword(keyword)
+        target, result, matches_id = improve_keyword(keyword)
 
         test.eq(schema+'educationalAlignment', target)
         test.eq({

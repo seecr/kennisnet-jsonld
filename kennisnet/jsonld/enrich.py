@@ -24,7 +24,7 @@
 ## end license ##
 
 from metastreams.jsonld import walk, identity, ignore_silently
-from .defined_term import defined_term, improve_keywords
+from .defined_term import defined_term, improve_keywords, result_to_defined_term
 from .ns import schema, lom, dcterms, edurep_terms
 import kennisnet.jsonld.utils as utils
 
@@ -221,7 +221,18 @@ def prepare_enrich(lookup=None, lookupByTermCode=None, lookupById=None):
             continue
         info.setdefault(_key(k), {})['documentation'] = doc
 
-    return walk(rules), info
+
+    w = walk(rules)
+    def enrich(data):
+        result = w(data)
+        for target, matches_id in result.pop('exactMatch', []):
+            terms = result.get(target, ())
+            if any(matches_id == item.get('@id') for item in terms):
+                continue
+            term = result_to_defined_term(lookupById(matches_id), target)
+            result[target] = terms + (term,)
+        return result
+    return enrich, info
 
 
 __all__ = ['prepare_enrich']
@@ -556,7 +567,7 @@ def test_educationallevel_copy_multi(enricher):
         })
     test.eq(x[0], tuple2list(r), msg=test.diff)
 
-# @test TODO exactMatch
+@test
 def test_educationallevel_copy_with_lookup_and_match(enricher):
     i = example({
         'schema:educationalLevel': {
