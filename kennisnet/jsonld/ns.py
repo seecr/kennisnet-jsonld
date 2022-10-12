@@ -29,4 +29,7 @@ lom = "http://ltsc.ieee.org/xsd/LOM#"
 prov = "http://www.w3.org/ns/prov#"
 edurep_terms = 'https://purl.edurep.nl/terms/'
 
-__all__ = ['schema', 'dcterms', 'lom', 'prov', 'edurep_terms']
+def to_curie(full):
+    return full.replace(schema, 'schema:').replace(dcterms, 'dcterms:').replace(lom, 'lom:')
+
+__all__ = ['schema', 'dcterms', 'lom', 'prov', 'edurep_terms', 'to_curie']

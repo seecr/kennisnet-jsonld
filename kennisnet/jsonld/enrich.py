@@ -25,7 +25,7 @@
 
 from metastreams.jsonld import walk, identity, ignore_silently
 from .defined_term import defined_term, improve_keywords, result_to_defined_term
-from .ns import schema, lom, dcterms, edurep_terms
+from .ns import schema, lom, dcterms, edurep_terms, to_curie
 import kennisnet.jsonld.utils as utils
 
 
@@ -165,9 +165,6 @@ def is_boolean(a,s,p,os):
         return a | {p:result}
     return a
 
-def _key(full):
-    return full.replace(schema, 'schema:').replace(lom, 'lom:').replace(dcterms, 'dcterms:')
-
 keyword_definition = dict(
         target_p=schema+'keywords',
         type=schema+'DefinedTerm',
@@ -176,36 +173,38 @@ keyword_definition = dict(
         source_p=schema+'inDefinedTermSet',
     )
 
-def prepare_enrich(lookup=None, lookupByTermCode=None, lookupById=None):
+def prepare_enrich(lookupObject=None):
     info = {}
-    def target_and_lookup(target_p, scheme, key_suffix=''):
-        key = _key(target_p)
-        lookup_key = key + key_suffix
-        # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
-        info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': lookup_key}
-        def lookup_fn(value):
-            return lookup(key=lookup_key, scheme=scheme, value=value)
-        return dict(target_p=target_p, lookup=lookup_fn)
+    # def target_and_lookup(target_p, scheme):
+    #     key = _key(target_p)
+    #     lookup_key = key + key_suffix
+    #     # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
+    #     info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': lookup_key}
+    #     def lookup_fn(value):
+    #         return lookup(key=lookup_key, scheme=scheme, value=value)
+    #     return dict(target_p=target_p, lookup=lookup_fn)
 
 
-    license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
+    license_fn = license(schema+'license', lookupObject, scheme='urn:lms:license')
 
     rules = {
         schema+'keywords': improve_keywords(lookupByTermCode),
-        schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
-        schema+'interactivityType': text(**target_and_lookup(schema+'interactivityType', 'urn:lms:interactivitytype')),
-        schema+'encodingFormat': text(**target_and_lookup(schema+'encodingFormat', 'urn:lms:mimetype')),
-        dcterms+'accessRights': text(**target_and_lookup(dcterms+'accessRights', 'urn:lms:accessrights')),
-        lom+'aggregationLevel': text(**target_and_lookup(lom+'aggregationLevel', 'urn:lms:aggregationlevel')),
-        lom+'cost': cost(**target_and_lookup(schema+'isAccessibleForFree', 'urn:lms:cost')),
+        schema+'creativeWorkStatus': text(schema+'creativeWorkStatus', lookup=lookupObject, scheme='urn:lms:status'),
+        schema+'interactivityType': text(schema+'interactivityType', lookup=lookupObject, scheme='urn:lms:interactivitytype'),
+        schema+'encodingFormat': text(schema+'encodingFormat', lookup=lookupObject, scheme='urn:lms:mimetype'),
+        dcterms+'accessRights': text(dcterms+'accessRights', lookup=lookupObject, scheme='urn:lms:accessrights'),
+        lom+'aggregationLevel': text(lom+'aggregationLevel', lookup=lookupObject, scheme='urn:lms:aggregationlevel'),
+        lom+'cost': cost(schema+'isAccessibleForFree', lookup=lookupObject, scheme='urn:lms:cost'),
         schema+'isAccessibleForFree': is_boolean,
         schema+'audience': definition(
                 type=schema+'Audience',
                 identifier_p=schema+'audienceType',
-                **target_and_lookup(schema+'audience', 'urn:lms:intendedenduserrole')),
-        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', lookupByTermCode, lookupById),
-        schema+'educationalLevel': defined_term(schema+'educationalLevel', lookupByTermCode, lookupById),
-        schema+'teaches': defined_term(schema+'teaches', lookupByTermCode, lookupById),
+                target_p=schema+'audience',
+                lookup=lookupObject,
+                scheme='urn:lms:intendedenduserrole'),
+        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', lookupObject),
+        schema+'educationalLevel': defined_term(schema+'educationalLevel', lookupObject),
+        schema+'teaches': defined_term(schema+'teaches', lookupObject),
         schema+'license': license_fn,
         schema+'copyrightNotice': license_fn,
         lom+'copyrightAndOtherRestrictions': license_fn,
@@ -219,7 +218,7 @@ def prepare_enrich(lookup=None, lookupByTermCode=None, lookupById=None):
             doc = v.get('documentation')
         if doc is None:
             continue
-        info.setdefault(_key(k), {})['documentation'] = doc
+        info.setdefault(to_curie(k), {})['documentation'] = doc
 
 
     w = walk(rules)
@@ -248,77 +247,80 @@ _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 
 
 
 testlookupdata = {
-    'urn:lms:intendedenduserrole': {
-        'teacher': _l(
-                id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
-                identifier='teacher',
-                source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-                labels=[('docent', 'nl')]),
-        'learnerrr': _l(
-                id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
-                identifier='learner',
-                source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-                labels=[('leerling', 'nl')]),
+    'byValue': {
+        'urn:lms:intendedenduserrole': {
+            'teacher': _l(
+                    id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
+                    identifier='teacher',
+                    source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
+                    labels=[('docent', 'nl')]),
+            'learnerrr': _l(
+                    id='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
+                    identifier='learner',
+                    source='http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
+                    labels=[('leerling', 'nl')]),
+        },
+        'urn:lms:status': {
+            'definitief': _l(identifier='final'),
+        },
+        'urn:lms:cost': {
+            'ja': _l(identifier='yes'),
+        },
+        'urn:lms:license': {
+            'cc-by-40': _l(uri='http://creativecommons.org/licenses/by/4.0/', labels=[("CC BY 4.0", 'nl')]),
+        },
+        'urn:edurep:conceptset': {
+            'VO': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+                identifier="2a1401e9-c223-493b-9b86-78f6993b1a8d",
+                source="http://purl.edustandaard.nl/begrippenkader",
+                labels=[('VO', 'nl')],
+                # definition=[('Voortgezet Onderwijs', 'nl')])
+                type=edurep_terms+'EducationalLevel',
+                ),
+        }
     },
-    'urn:lms:status': {
-        'definitief': _l(identifier='final'),
-    },
-    'urn:lms:cost': {
-        'ja': _l(identifier='yes'),
-    },
-    'urn:lms:license': {
-        'cc-by-40': _l(uri='http://creativecommons.org/licenses/by/4.0/', labels=[("CC BY 4.0", 'nl')]),
-    },
-    'urn:edurep:conceptset': {
-        'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(labels=[("Nederlandse tekst", 'nl')]),
-        'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(labels=[('Improved', 'en')]),
-        'uri:has_match': _l(id='uri:has_match', source='http://purl.edustandaard.nl/concept', labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
-        'uri:matches': _l(id='uri:matches', source='http://purl.edustandaard.nl/concept', labels=[("Hetzelfde", 'nl')]),
-    },
+    'byId': {
+        'urn:edurep:conceptset': {
+            'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
+                identifier="2a1401e9-c223-493b-9b86-78f6993b1a8d",
+                source="http://purl.edustandaard.nl/begrippenkader",
+                labels=[('VO', 'nl')],
+                # definition=[('Voortgezet Onderwijs', 'nl')])
+                type=edurep_terms+'EducationalLevel',
+                ),
+            'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/my_nl',
+                labels=[("Nederlandse tekst", 'nl')],
+            ),
+            'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6',
+                labels=[('Improved', 'en')]),
+            'uri:has_match': _l(
+                id='uri:has_match',
+                source='http://purl.edustandaard.nl/concept',
+                labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
+            'uri:matches': _l(
+                id='uri:matches',
+                source='http://purl.edustandaard.nl/concept',
+                labels=[("Hetzelfde", 'nl')]),
+        },
+    }
 }
 
-def lookup_for_test(key, scheme, value):
-    return testlookupdata.get(scheme, {}).get(value, _l())
-
-def lookupByTermCode_for_test(termCode):
-    return {
-        'VO': _l(
-            id='http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
-            identifier="2a1401e9-c223-493b-9b86-78f6993b1a8d",
-            source="http://purl.edustandaard.nl/begrippenkader",
-            labels=[('VO', 'nl')],
-            # definition=[('Voortgezet Onderwijs', 'nl')])
-            type=edurep_terms+'EducationalLevel',
-            ),
-    }.get(termCode, _l())
-
-
-def lookupById_for_test(id):
-    return {
-        'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d': _l(
-            id='http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
-            identifier="2a1401e9-c223-493b-9b86-78f6993b1a8d",
-            source="http://purl.edustandaard.nl/begrippenkader",
-            labels=[('VO', 'nl')],
-            # definition=[('Voortgezet Onderwijs', 'nl')])
-            type=edurep_terms+'EducationalLevel',
-            ),
-        'http://purl.edustandaard.nl/begrippenkader/my_nl': _l(
-            id='http://purl.edustandaard.nl/begrippenkader/my_nl',
-            labels=[("Nederlandse tekst", 'nl')],
-        ),
-        'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6': _l(
-            id='http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6',
-            labels=[('Improved', 'en')]),
-        'uri:has_match': _l(
-            id='uri:has_match',
-            source='http://purl.edustandaard.nl/concept',
-            labels=[("Heeft overeenkomst", 'nl')], exactMatch='uri:matches'),
-        'uri:matches': _l(
-            id='uri:matches',
-            source='http://purl.edustandaard.nl/concept',
-            labels=[("Hetzelfde", 'nl')]),
-    }.get(id, _l())
+class MockLookup:
+    def __init__(self):
+        self.not_found = []
+        self.invalid = []
+    def report_invalid(self, key, value):
+        self.invalid.append((key, value))
+    def report_not_found(self, key, value):
+        self.not_found.append((key, value))
+    def lookupById(self, scheme, value):
+        return testlookupdata['byId'].get(scheme, {}).get(value, _l())
+    def lookupByValue(self, scheme, value):
+        return testlookupdata['byValue'].get(scheme, {}).get(value, _l())
 
 def example(d):
     return jsonld.expand({
@@ -327,17 +329,22 @@ def example(d):
         'schema:name': 'Name'}|d)
 
 @test.fixture
-def enricher():
-    yield prepare_enrich(lookup_for_test, lookupByTermCode=lookupByTermCode_for_test, lookupById=lookupById_for_test)[0]
+def enrich_and_lookup():
+    lookup = MockLookup()
+    yield prepare_enrich(lookup)[0], lookup
 
 @test
-def test_setup():
-    test.eq(None, lookup_for_test('schema:thing', 'scheme', 'value').source)
+def test_setup(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
+    test.eq(None, lookup.lookupByValue('scheme', 'value').source)
     test.eq('http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
-            lookup_for_test('schema:audience', 'urn:lms:intendedenduserrole', 'learnerrr').source)
+            lookup.lookupByValue('urn:lms:intendedenduserrole', 'learnerrr').source)
+    lookup.report_invalid('schema:name', 'No name')
+    test.eq([('schema:name', 'No name')], lookup.invalid)
 
 @test
-def test_audience(enricher):
+def test_audience(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:audience':[{
             'schema:audienceType': 'learnerrr',
@@ -363,7 +370,8 @@ def test_audience(enricher):
     test.eq(x,[r], msg=test.diff)
 
 @test
-def test_audience_from_value(enricher):
+def test_audience_from_value(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({'schema:audience': 'learnerrr'})
     r = enricher(i[0])
     x = example({
@@ -375,7 +383,8 @@ def test_audience_from_value(enricher):
     test.eq(x,[r], msg=test.diff)
 
 @test
-def test_invalid(enricher):
+def test_invalid(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:audience':{
             'schema:audienceType': 'no such thing',
@@ -388,7 +397,8 @@ def test_invalid(enricher):
 tuple2list = lambda x:json.loads(json.dumps(x))
 
 @test
-def test_educationallevel(enricher):
+def test_educationallevel(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
@@ -408,7 +418,8 @@ def test_educationallevel(enricher):
     test.eq(x[0],tuple2list(r), msg=test.diff2)
 
 @test
-def test_educationallevel_by_id(enricher):
+def test_educationallevel_by_id(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
@@ -426,7 +437,8 @@ def test_educationallevel_by_id(enricher):
     test.eq(x[0],tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy(enricher):
+def test_educationallevel_copy(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
@@ -450,7 +462,8 @@ def test_educationallevel_copy(enricher):
     test.eq(x[0],tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup(enricher):
+def test_educationallevel_copy_with_lookup(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/my_nl',
@@ -471,7 +484,8 @@ def test_educationallevel_copy_with_lookup(enricher):
     test.eq(x[0],tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup_not_found(enricher):
+def test_educationallevel_copy_with_lookup_not_found(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/made_up',
@@ -494,7 +508,8 @@ def test_educationallevel_copy_with_lookup_not_found(enricher):
     test.eq(x[0], tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup(enricher):
+def test_educationallevel_copy_with_lookup(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@id': 'http://purl.edustandaard.nl/begrippenkader/B79AA975CFC24FBB90939B4A2E7B05A6',
@@ -515,7 +530,8 @@ def test_educationallevel_copy_with_lookup(enricher):
     test.eq(x[0], tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_multi(enricher):
+def test_educationallevel_copy_multi(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': [{
             '@id': 'http://purl.edustandaard.nl/begrippenkader/2a1401e9-c223-493b-9b86-78f6993b1a8d',
@@ -568,7 +584,8 @@ def test_educationallevel_copy_multi(enricher):
     test.eq(x[0], tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup_and_match(enricher):
+def test_educationallevel_copy_with_lookup_and_match(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
             '@id': 'uri:has_match',
@@ -596,7 +613,8 @@ def test_educationallevel_copy_with_lookup_and_match(enricher):
     test.eq(x[0], tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup_and_match_already_present(enricher):
+def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': [{
             '@id': 'uri:matches',
@@ -678,21 +696,24 @@ def test_definition_not_found():
         }, r)
 
 @test
-def test_text(enricher):
+def test_text(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({'schema:creativeWorkStatus': 'definitief'})
     r = enricher(i[0])
     x = example({'schema:creativeWorkStatus': 'final'})
     test.eq(x[0],r, msg=test.diff)
 
 @test
-def test_cost(enricher):
+def test_cost(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({'lom:cost': 'ja'})
     r = enricher(i[0])
     x = example({'schema:isAccessibleForFree': False})
     test.eq(x[0],r, msg=test.diff)
 
 @test
-def test_isAccessibleForFree(enricher):
+def test_isAccessibleForFree(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({'schema:isAccessibleForFree': False})
     r = enricher(i[0])
     x = example({'schema:isAccessibleForFree': False})
@@ -704,7 +725,8 @@ def test_isAccessibleForFree(enricher):
     test.eq(x[0],r, msg=test.diff)
 
 @test
-def test_license(enricher):
+def test_license(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
     i = example({
         'lom:copyrightAndOtherRestrictions': 'cc-by-40',
         'schema:copyrightNotice': 'Notice, will be removed'})
@@ -732,7 +754,7 @@ def test_license(enricher):
 
 # @test TODO Documentation
 def test_enrich_info():
-    enrich_lookup_info = prepare_enrich(lookup_for_test)[1]
+    enrich_lookup_info = prepare_enrich(MockLookup())[1]
     test.eq({
         'dcterms:accessRights': {
             'lookups': {
