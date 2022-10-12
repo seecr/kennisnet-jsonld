@@ -121,7 +121,8 @@ def prep_improve_keyword(lookup):
 def improve_keywords(lookup):
     improve_keyword = prep_improve_keyword(lookup)
     def keywords_fn(a,s,p,os):
-        newdata = {p:list(a.get(p, ()))}
+        created_keywords = a.get(p,())
+        newdata = {p:[]}
         for keyword in os:
             if keyword.get('@type') != (schema+'DefinedTerm',):
                 newdata[p].append(keyword)
@@ -130,19 +131,21 @@ def improve_keywords(lookup):
             if not target_p in newdata:
                 newdata[target_p] = a.get(target_p, [])
             newdata[target_p].append(keyword)
+        newdata[p].extend(created_keywords)
         return a|{k:tuple(v) for k,v in newdata.items() if v}
     return keywords_fn
 
 
 def prep_improve_definedterm(lookup):
     def improve_definedterm(term):
-        termId = term.get('@id')
-        if not termId:
+        if not (termId := term.get('@id')):
             return term
+        termId = utils.pretty_print_uuid(termId)
         lookup_result = lookup(termId)
         if not lookup_result.id:
             #TODO not_found (welk veld???)
             return term
+        term['@id'] = lookup_result.id
         termCodeKey = schema+'targetName' if term.get('@type') == (schema+'AlignmentObject',) else schema+'termCode'
         if lookup_result.labels:
             term[schema+'name'] = tuple(utils.as_value(v,l) for v,l in lookup_result.labels)
@@ -156,10 +159,12 @@ def defined_term(target_p, lookupTermcode, lookupId):
     to_keywords_walk = definition_walk
     copy_walk = definition_walk
     inDefinedTermSet = schema+'inDefinedTermSet'
+    type_object = schema+'DefinedTerm'
     if target_p == schema+'educationalAlignment':
         to_keywords_walk = definition_alignment_keywords_walk
         copy_walk = definition_alignment_walk
         inDefinedTermSet = schema+'educationalFramework'
+        type_object = schema+'AlignmentObject'
     improve_keyword = prep_improve_keyword(lookupTermcode)
     improve_definedterm = prep_improve_definedterm(lookupId)
 
@@ -171,6 +176,7 @@ def defined_term(target_p, lookupTermcode, lookupId):
                 target = target_p
                 result = copy_walk(term)
                 result[inDefinedTermSet] = ({'@value': curriculum_uri},)
+                result['@type'] = (type_object,)
                 result = improve_definedterm(result)
             else:
                 target = keywords_target_p
@@ -363,6 +369,20 @@ class educationalAlignment:
             schema+'name':({'@language': 'nl', '@value':'Lezen van zakelijke teksten'},),
         },)}, result, msg=test.diff2)
 
+    @test
+    def flow2_2_lookup_by_only_id():
+        start = {schema+'educationalAlignment':({
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
+        },)}
+        result = w(start)
+        test.eq({schema+'educationalAlignment':({
+            '@type': (schema+'AlignmentObject',),
+            schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
+            schema+'targetName': ({'@value': 'teksten'},),
+            schema+'name':({'@language': 'nl', '@value':'Lezen van zakelijke teksten'},),
+        },)}, result, msg=test.diff2)
+
 
 class keywords_flow:
     def zoekDefinedTerm(termCode):
@@ -533,11 +553,11 @@ class keywords_flow:
                                 {'@language':'nl', '@value': 'WO Master'},),
             },),
             schema+'keywords':({
+                '@value': 'integratietest',
+            },{
                 '@type': (schema+'DefinedTerm',),
                 schema+'termCode': ({'@value': 'zo maar'},),
                 schema+'name': ({'@value': 'Gewoon keyword'},),
-            },{
-                '@value': 'integratietest',
             },),
         }, result, msg=test.diff2)
 
