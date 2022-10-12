@@ -24,8 +24,8 @@
 ## end license ##
 
 from metastreams.jsonld import walk, identity, ignore_silently
-from .defined_term import defined_term
-from .ns import *
+from .defined_term import defined_term, improve_keywords
+from .ns import schema, lom, dcterms
 import kennisnet.jsonld.utils as utils
 
 
@@ -34,18 +34,22 @@ def getp_first_value(d, p):
         return i.get('@value')
     return None
 
+
 def copy(rules):
     r = walk(rules)
+
     def copy_fn(a,s,p,os):
         a[p] = [r(o) for o in os]
         return a
     return copy_fn
+
 
 def first(l):
     try:
         return next(iter(l))
     except StopIteration:
         return None
+
 
 def values(os):
     for o in os:
@@ -253,7 +257,7 @@ def pretty_print_uuid(s):
     except ValueError:
         return s
 
-def prepare_enrich(lookup=None):
+def prepare_enrich(lookup=None, lookupByTermCode=None, lookupById=None):
     info = {}
     def target_and_lookup(target_p, scheme, key_suffix=''):
         key = _key(target_p)
@@ -264,10 +268,11 @@ def prepare_enrich(lookup=None):
             return lookup(key=lookup_key, scheme=scheme, value=value)
         return dict(target_p=target_p, lookup=lookup_fn)
 
+
     license_fn = license(**target_and_lookup(schema+'license', 'urn:lms:license'))
 
     rules = {
-        schema+'keywords': copy_data(schema+'keywords', prepend=True),
+        schema+'keywords': improve_keywords(lookupByTermCode),
         schema+'creativeWorkStatus': text(**target_and_lookup(schema+'creativeWorkStatus', 'urn:lms:status')),
         schema+'interactivityType': text(**target_and_lookup(schema+'interactivityType', 'urn:lms:interactivitytype')),
         schema+'encodingFormat': text(**target_and_lookup(schema+'encodingFormat', 'urn:lms:mimetype')),
@@ -279,63 +284,9 @@ def prepare_enrich(lookup=None):
                 type=schema+'Audience',
                 identifier_p=schema+'audienceType',
                 **target_and_lookup(schema+'audience', 'urn:lms:intendedenduserrole')),
-        schema+'educationalAlignment': {
-            '__switch__': copy_if_slo_or_begrippenkader(schema+'educationalFramework'),
-            'documentation': copy_if_slo_or_begrippenkader.__doc__,
-            'default': definition(
-                    type=schema+'AlignmentObject',
-                    value_p=schema+'name',
-                    identifier_p=schema+'targetName',
-                    source_p=schema+'educationalFramework',
-                    not_found_definition=keyword_definition,
-                    **target_and_lookup(schema+'educationalAlignment', 'urn:lms:disciplinemapping'),
-                ),
-            'copy': copy_definition(
-                    type=schema+'AlignmentObject',
-                    value_p=schema+'name',
-                    identifier_p=schema+'targetName',
-                    source_p=schema+'educationalFramework',
-                    **target_and_lookup(schema+'educationalAlignment', 'urn:edurep:conceptset', '.id_for_label')
-                ),
-            },
-        schema+'educationalLevel': {
-            '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
-            'documentation': copy_if_slo_or_begrippenkader.__doc__,
-            'default': definition(
-                    type=schema+'DefinedTerm',
-                    value_p=schema+'name',
-                    identifier_p=schema+'termCode',
-                    source_p=schema+'inDefinedTermSet',
-                    not_found_definition=keyword_definition,
-                    **target_and_lookup(schema+'educationalLevel', 'urn:lms:educationallevel'),
-                ),
-            'copy': copy_definition(
-                    type=schema+'DefinedTerm',
-                    value_p=schema+'name',
-                    identifier_p=schema+'termCode',
-                    source_p=schema+'inDefinedTermSet',
-                    **target_and_lookup(schema+'educationalLevel', 'urn:edurep:conceptset', '.id_for_label')
-                ),
-            },
-        schema+'teaches': {
-            '__switch__': copy_if_slo_or_begrippenkader(schema+'inDefinedTermSet'),
-            'documentation': copy_if_slo_or_begrippenkader.__doc__,
-            'default': definition(
-                    type=schema+'DefinedTerm',
-                    value_p=schema+'name',
-                    identifier_p=schema+'termCode',
-                    source_p=schema+'inDefinedTermSet',
-                    not_found_definition=keyword_definition,
-                    **target_and_lookup(schema+'teaches', 'urn:lms:po_kerndoel'),
-                ),
-            'copy': copy_definition(
-                    type=schema+'DefinedTerm',
-                    value_p=schema+'name',
-                    identifier_p=schema+'termCode',
-                    source_p=schema+'inDefinedTermSet',
-                    **target_and_lookup(schema+'teaches', 'urn:edurep:conceptset', '.id_for_label')
-                ),
-            },
+        schema+'educationalAlignment': defined_term(schema+'educationalAlignment', lookupByTermCode, lookupById),
+        schema+'educationalLevel': defined_term(schema+'educationalLevel', lookupByTermCode, lookupById),
+        schema+'teaches': defined_term(schema+'teaches', lookupByTermCode, lookupById),
         schema+'license': license_fn,
         schema+'copyrightNotice': license_fn,
         lom+'copyrightAndOtherRestrictions': license_fn,
@@ -361,7 +312,8 @@ from autotest import test
 from pprint import pprint
 from collections import namedtuple
 
-_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch'], defaults=[None, None, None, list(), None, None])
+_l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch', 'type'],
+                       defaults=[None, None,         None,     list(),   None,  None,         None])
 
 
 testlookupdata = {
@@ -407,6 +359,13 @@ testlookupdata['urn:lms:educationallevel']['http://purl.edustandaard.nl/begrippe
 def lookup_for_test(key, scheme, value):
     return testlookupdata.get(scheme, {}).get(value, _l())
 
+def lookupByTermCode_for_test(termCode):
+    print('lookupByTermCode', termCode)
+    return testlookupdata.get('urn:edurep:conceptset', {}).get(termCode, _l())
+def lookupById_for_test(id):
+    print('lookupById', id)
+    return testlookupdata.get('urn:edurep:conceptset', {}).get(id, _l())
+
 def example(d):
     return jsonld.expand({
         '@context':{'schema':schema, 'lom': lom,},
@@ -415,7 +374,7 @@ def example(d):
 
 @test.fixture
 def enricher():
-    yield prepare_enrich(lookup_for_test)[0]
+    yield prepare_enrich(lookup_for_test, lookupByTermCode=lookupByTermCode_for_test, lookupById=lookupById_for_test)[0]
 
 @test
 def test_setup():
@@ -478,7 +437,7 @@ def test_educationallevel(enricher):
         'schema:educationalLevel': {
             '@type': 'schema:DefinedTerm',
             'schema:inDefinedTermSet': 'http://download.edustandaard.nl/vdex/vdex_context_czp_20060628.xml',
-            'schema:name': 'VO'},
+            'schema:termCode': 'VO'},
         })
     r = enricher(i[0])
     x = example({

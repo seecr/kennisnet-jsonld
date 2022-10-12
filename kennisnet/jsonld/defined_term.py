@@ -23,7 +23,7 @@
 #
 ## end license ##
 
-from .ns import *
+from .ns import schema, edurep_terms
 from metastreams.jsonld import identity, walk, ignore_silently
 import seecr.functools as sfc
 import kennisnet.jsonld.utils as utils
@@ -109,7 +109,7 @@ type_to_target = {
 
 def prep_improve_keyword(lookup):
     def improve_keyword(d):
-        assert d['@type'] == (schema+'DefinedTerm',)
+        assert d['@type'] == (schema+'DefinedTerm',) or d['@type'] == [schema+'DefinedTerm',]
         termCode = sfc.get_in(d, (schema+'termCode', 0, '@value'))
         l_result = lookup(termCode)
         if not l_result or not l_result.type:
@@ -182,11 +182,10 @@ def defined_term(target_p, lookupTermcode, lookupId):
         return a|{k:v for k,v in results.items() if v}
     return defined_term_fn
 
-__all__ = ['defined_term']
+__all__ = ['defined_term', 'improve_keywords']
 
 
 from autotest import test
-import json
 from collections import namedtuple
 _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch', 'type'], defaults=[None, None, None, list(), None, None, None])
 

@@ -31,10 +31,10 @@ here = pathlib.Path(__file__).parent.resolve()
 
 long_description = (here/"README.md").read_text(encoding="utf-8")
 
-version='0.1.0'
+version = '0.1.0'
 
-packages=find_packages(exclude=('kennisnet',))
-packages=find_packages() #DO_NOT_DISTRIBUTE
+packages = find_packages(exclude=('kennisnet',))
+packages = find_packages() #DO_NOT_DISTRIBUTE
 
 setup(
     name='kennisnet-jsonld',
@@ -51,4 +51,3 @@ setup(
         'Programming Language :: Python :: 3',
     ],
 )
-

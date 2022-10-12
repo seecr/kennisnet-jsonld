@@ -1,0 +1,11 @@
+[flake8]
+max-line-length = 120
+extend-ignore =
+    # Ignore all pycodestyle errors
+    E,
+    # Ignore all pycodestyle warnings
+    W
+
+exclude =
+    # env from pip
+    env/lib
