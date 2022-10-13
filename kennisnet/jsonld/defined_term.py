@@ -31,7 +31,7 @@ import kennisnet.jsonld.utils as utils
 
 def with_predicate(target_p):
     def fn(a,s,p,os):
-        return a | {target_p:a.get(target_p, ()) + os}
+        return a | {target_p:a.get(target_p, []) + os}
     return fn
 
 definition_rules = {
@@ -48,15 +48,17 @@ definition_alignment_rules = {
     schema+'educationalFramework': identity,
     schema+'targetName': identity,
     schema+'name': identity,
+    schema+'alignmentType': identity
 }
 definition_alignment_walk = walk(definition_alignment_rules)
 
 definition_alignment_to_keywords_rules = {
-    '@type': lambda a,s,p,os: a|{'@type':(schema+'DefinedTerm',)},
+    '@type': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
     '@id': identity,
     schema+'educationalFramework': with_predicate(schema+'inDefinedTermSet'),
     schema+'targetName': with_predicate(schema+'termCode'),
     schema+'name': identity,
+    schema+'alignmentType': ignore_silently,
 }
 definition_alignment_keywords_walk = walk(definition_alignment_to_keywords_rules)
 
@@ -89,15 +91,15 @@ def result_to_defined_term(lookup_result, target_p):
     if target_p == schema+'educationalAlignment':
         type, termCodeKey, inDefinedTermSetKey = schema+'AlignmentObject', schema+'targetName', schema+'educationalFramework'
 
-    result = {'@type': (type,),}
+    result = {'@type': [type],}
     if lookup_result.id:
         result["@id"] = lookup_result.id
     if lookup_result.identifier:
-        result[termCodeKey] = ({'@value': lookup_result.identifier},)
+        result[termCodeKey] = [{'@value': lookup_result.identifier}]
     if lookup_result.source:
-        result[inDefinedTermSetKey] = ({'@value': lookup_result.source},)
+        result[inDefinedTermSetKey] = [{'@value': lookup_result.source}]
     if lookup_result.labels:
-        result[schema+'name'] = tuple(utils.as_value(v,l) for v,l in lookup_result.labels)
+        result[schema+'name'] = [utils.as_value(v,l) for v,l in lookup_result.labels]
     return result
 
 
@@ -109,7 +111,7 @@ type_to_target = {
 
 def prep_improve_keyword(lookupObject):
     def improve_keyword(d):
-        assert d['@type'] == (schema+'DefinedTerm',) or d['@type'] == [schema+'DefinedTerm',]
+        assert d['@type'] == [schema+'DefinedTerm']
         termCode = sfc.get_in(d, (schema+'termCode', 0, '@value'))
         l_result = lookupObject.lookupByValue('urn:edurep:conceptset', termCode)
         if not l_result or not l_result.type:
@@ -124,10 +126,10 @@ def improve_keywords(lookupObject):
         '''Dit veld wordt gecontroleerd in stap 2.1 van de zogenaamde Flow
         2.1 Op basis van termCode wordt gezocht in prefLabel, altLabel, hiddenLabel op een match. Als in de match een type is opgenomen, dan wordt het keyword verplaatst.
         '''
-        created_keywords = a.get(p,())
+        created_keywords = a.get(p,[])
         newdata = {p:[]}
         for keyword in os:
-            if keyword.get('@type') != (schema+'DefinedTerm',):
+            if keyword.get('@type') != [schema+'DefinedTerm']:
                 newdata[p].append(keyword)
                 continue
             target_p, keyword, matches_id = improve_keyword(keyword)
@@ -137,7 +139,7 @@ def improve_keywords(lookupObject):
                 newdata[target_p] = a.get(target_p, [])
             newdata[target_p].append(keyword)
         newdata[p].extend(created_keywords)
-        return a|{k:tuple(v) for k,v in newdata.items() if v}
+        return a|{k:v for k,v in newdata.items() if v}
     keywords_fn.lookup_info = {'urn:edurep:conceptset':{}}
     return keywords_fn
 
@@ -152,11 +154,11 @@ def prep_improve_definedterm(lookupObject):
             lookupObject.report_not_found(to_curie(target_p), termId)
             return term, None
         term['@id'] = lookup_result.id
-        termCodeKey = schema+'targetName' if term.get('@type') == (schema+'AlignmentObject',) else schema+'termCode'
+        termCodeKey = schema+'targetName' if term.get('@type') == [schema+'AlignmentObject'] else schema+'termCode'
         if lookup_result.labels:
-            term[schema+'name'] = tuple(utils.as_value(v,l) for v,l in lookup_result.labels)
+            term[schema+'name'] = [utils.as_value(v,l) for v,l in lookup_result.labels]
         if lookup_result.identifier:
-            term[termCodeKey] = ({'@value': lookup_result.identifier},)
+            term[termCodeKey] = [{'@value': lookup_result.identifier},]
         return term, lookup_result.exactMatch
     return improve_definedterm
 
@@ -187,18 +189,18 @@ def defined_term(target_p, lookupObject):
             if is_cur:
                 target = target_p
                 result = copy_walk(term)
-                result[inDefinedTermSet] = ({'@value': curriculum_uri},)
-                result['@type'] = (type_object,)
+                result[inDefinedTermSet] = [{'@value': curriculum_uri}]
+                result['@type'] = [type_object]
                 result, matches_id = improve_definedterm(result, target)
             else:
                 target = keywords_target_p
                 result = to_keywords_walk(term)
                 target, result, matches_id = improve_keyword(result)
             if not target in results:
-                results[target] = a.get(target, ())
+                results[target] = a.get(target, [])
             if matches_id:
                 results['exactMatch'].append((target, matches_id))
-            results[target] += (result,)
+            results[target].append(result)
         return a|{k:v for k,v in results.items() if v}
     defined_term_fn.lookup_info = {'urn:edurep:conceptset':{'not_found': to_curie(target_p)}}
     return defined_term_fn
@@ -272,40 +274,40 @@ class teaches:
         w, lookup = convert
         start = {
             schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
-                schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
+                '@type': [schema+'DefinedTerm'],
+                schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
             },),
         }
 
         result = w(start)
         test.eq({
-            schema+'keywords':({
-                '@type': (schema+'DefinedTerm',),
-                schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-            },)
+            schema+'keywords':[{
+                '@type': [schema+'DefinedTerm'],
+                schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+            }]
         }, result, msg=test.diff2)
 
     @test
     def keep_unknown_data(convert:1):
         w, lookup = convert
         start = {
-            schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
+            schema+'teaches':[{
+                '@type': [schema+'DefinedTerm'],
                 '@id': "urn:uuid:onderwijs",
-                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-            },),
+                schema+'inDefinedTermSet': [{'@value': "http://purl.edustandaard.nl/begrippenkader"}],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}]
+            }],
         }
         result = w(start)
         test.eq({
-            schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
+            schema+'teaches':[{
+                '@type': [schema+'DefinedTerm'],
                 '@id': "urn:uuid:onderwijs",
-                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-            },),
+                schema+'inDefinedTermSet': [{'@value': "http://purl.edustandaard.nl/begrippenkader"}],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+            }],
         }, result, msg=test.diff2)
         test.eq([('schema:teaches', 'urn:uuid:onderwijs')], lookup.not_found)
 
@@ -313,22 +315,22 @@ class teaches:
     def keep_known_data(convert):
         w, lookup = convert
         start = {
-            schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
+            schema+'teaches':[{
+                '@type': [schema+'DefinedTerm'],
                 '@id': "urn:uuid:education",
-                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-            },),
+                schema+'inDefinedTermSet': [{'@value': "http://purl.edustandaard.nl/begrippenkader"}],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+            }],
         }
         result = w(start)
         test.eq({
-            schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
+            schema+'teaches':[{
+                '@type': [schema+'DefinedTerm'],
                 '@id': "urn:uuid:education",
-                schema+'inDefinedTermSet': ({'@value': "http://purl.edustandaard.nl/begrippenkader"},),
-                schema+'termCode': ({'@value': 'education'},),
-                schema+'name': ({'@value': 'Onderwijs', '@language': 'nl'},)
-            },),
+                schema+'inDefinedTermSet': [{'@value': "http://purl.edustandaard.nl/begrippenkader"}],
+                schema+'termCode': [{'@value': 'education'}],
+                schema+'name': [{'@value': 'Onderwijs', '@language': 'nl'}],
+            }]
         }, result, msg=test.diff2)
 
 class educationalAlignment:
@@ -355,108 +357,109 @@ class educationalAlignment:
     @test
     def move_data_to_keywords(convert):
         w, lookup = convert
-        start = {schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
-            schema+'educationalFramework': ({'@value': 'not:conceptset'},),
-            schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name':({'@value':'Ondewijs'},),
-        },)}
+        start = {schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject'],
+            schema+'educationalFramework': [{'@value': 'not:conceptset'}],
+            schema+'targetName': [{'@value': 'urn:uuid:onderwijs'}],
+            schema+'name':[{'@value':'Ondewijs'}],
+            schema+'alignmentType':[{'@value':'discipline'}],
+        }]}
 
         result = w(start)
-        test.eq({schema+'keywords':({
-            '@type': (schema+'DefinedTerm',),
-            schema+'inDefinedTermSet': ({'@value': 'not:conceptset'},),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name':({'@value':'Ondewijs'},),
-        },)}, result, msg=test.diff2)
+        test.eq({schema+'keywords':[{
+            '@type': [schema+'DefinedTerm'],
+            schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
+            schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+            schema+'name':[{'@value':'Ondewijs'}],
+        }]}, result, msg=test.diff2)
 
     @test
     def keep_data(convert:1):
         w, lookup = convert
-        start = {schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
-            schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+        start = {schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject',],
+            schema+'educationalFramework': [{'@value': 'https://opendata.slo.nl/curriculum/uuid'},],
             '@id': "urn:uuid:onderwijs",
-            schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name':({'@value':'Ondewijs'},),
-        },)}
+            schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},],
+            schema+'name':[{'@value':'Ondewijs'},],
+        },]}
         result = w(start)
-        test.eq({schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
-            schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+        test.eq({schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject',],
+            schema+'educationalFramework': [{'@value': 'https://opendata.slo.nl/curriculum/uuid'},],
             '@id': "urn:uuid:onderwijs",
-            schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name':({'@value':'Ondewijs'},),
-        },)}, result, msg=test.diff2)
+            schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},],
+            schema+'name':[{'@value':'Ondewijs'},],
+        },]}, result, msg=test.diff2)
         test.eq([('schema:educationalAlignment', 'urn:uuid:onderwijs')], lookup.not_found)
 
     @test
     def keep_some(convert:1):
         w, lookup = convert
         start = {
-            schema+'educationalAlignment':({
-                '@type': (schema+'AlignmentObject',),
-                schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+            schema+'educationalAlignment':[{
+                '@type': [schema+'AlignmentObject',],
+                schema+'educationalFramework': [{'@value': 'https://opendata.slo.nl/curriculum/uuid'},],
                 '@id': "urn:uuid:onderwijs",
-                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
+                schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},]
             },{
-                '@type': (schema+'AlignmentObject',),
-                schema+'educationalFramework': ({'@value': 'unknown:framework'},),
+                '@type': [schema+'AlignmentObject',],
+                schema+'educationalFramework': [{'@value': 'unknown:framework'},],
                 '@id': "urn:uuid:onderwijs",
-                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
-            },)
+                schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},]
+            },]
         }
         result = w(start)
         test.eq({
-            schema+'educationalAlignment':({
-                '@type': (schema+'AlignmentObject',),
-                schema+'educationalFramework': ({'@value': 'https://opendata.slo.nl/curriculum/uuid'},),
+            schema+'educationalAlignment':[{
+                '@type': [schema+'AlignmentObject',],
+                schema+'educationalFramework': [{'@value': 'https://opendata.slo.nl/curriculum/uuid'},],
                 '@id': "urn:uuid:onderwijs",
-                schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},)
-            },),
-            schema+'keywords': ({
-                '@type': (schema+'DefinedTerm',),
-                schema+'inDefinedTermSet': ({'@value': 'unknown:framework'},),
+                schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},]
+            },],
+            schema+'keywords': [{
+                '@type': [schema+'DefinedTerm',],
+                schema+'inDefinedTermSet': [{'@value': 'unknown:framework'},],
                 '@id': "urn:uuid:onderwijs",
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},)
-            },),
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'},]
+            },],
         }, result, msg=test.diff2)
         test.eq([('schema:educationalAlignment', 'urn:uuid:onderwijs')], lookup.not_found)
 
     @test
     def flow2_2_lookup_by_id(convert):
         w, lookup = convert
-        start = {schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
+        start = {schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject',],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
-            schema+'targetName': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name':({'@value':'Ondewijs'},),
-        },)}
+            schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},],
+            schema+'name':[{'@value':'Ondewijs'},],
+        },]}
         result = w(start)
         test.eq([(schema+'educationalAlignment', 'https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456')], result.pop('exactMatch'))
-        test.eq({schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
-            schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+        test.eq({schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject',],
+            schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
-            schema+'targetName': ({'@value': 'teksten'},),
-            schema+'name':({'@language': 'nl', '@value':'Lezen van zakelijke teksten'},),
-        },)}, result, msg=test.diff2)
+            schema+'targetName': [{'@value': 'teksten'},],
+            schema+'name':[{'@language': 'nl', '@value':'Lezen van zakelijke teksten'},],
+        }]}, result, msg=test.diff2)
 
     @test
     def flow2_2_lookup_by_only_id(convert):
         w, lookup = convert
-        start = {schema+'educationalAlignment':({
+        start = {schema+'educationalAlignment':[{
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
-        },)}
+        }]}
         result = w(start)
         test.eq([(schema+'educationalAlignment', 'https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456')], result.pop('exactMatch'))
-        test.eq({schema+'educationalAlignment':({
-            '@type': (schema+'AlignmentObject',),
-            schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
+        test.eq({schema+'educationalAlignment':[{
+            '@type': [schema+'AlignmentObject',],
+            schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
-            schema+'targetName': ({'@value': 'teksten'},),
-            schema+'name':({'@language': 'nl', '@value':'Lezen van zakelijke teksten'},),
-        },)}, result, msg=test.diff2)
+            schema+'targetName': [{'@value': 'teksten'},],
+            schema+'name':[{'@language': 'nl', '@value':'Lezen van zakelijke teksten'}],
+        }]}, result, msg=test.diff2)
 
 class keywords_flow:
     _lookup = LookupObject()
@@ -513,19 +516,19 @@ class keywords_flow:
         w, lookup = convert
         improve_keyword = prep_improve_keyword(lookup)
         keyword = {
-            '@type': (schema+'DefinedTerm',),
-            schema+'termCode': ({'@value': 'urn:uuid:rekenen'},),
-            schema+'name': ({'@value': 'Hello, my name is...'},),
+            '@type': [schema+'DefinedTerm',],
+            schema+'termCode': [{'@value': 'urn:uuid:rekenen'},],
+            schema+'name': [{'@value': 'Hello, my name is...'},],
         }
 
         target, result, matches_id = improve_keyword(keyword)
 
         test.eq({
-            '@type': (schema+'DefinedTerm',),
+            '@type': [schema+'DefinedTerm',],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1111-2222-3333-123456123456',
-            schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-            schema+'termCode': ({'@value': 'rekenen'},),
-            schema+'name': ({'@language':'nl', '@value': 'Handig rekenen'},),
+            schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+            schema+'termCode': [{'@value': 'rekenen'},],
+            schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
         }, result, msg=test.diff2)
         test.eq(schema+'teaches', target)
 
@@ -534,20 +537,20 @@ class keywords_flow:
         w, lookup = convert
         improve_keyword = prep_improve_keyword(lookup)
         keyword = {
-            '@type': (schema+'DefinedTerm',),
-            schema+'termCode': ({'@value': 'urn:uuid:master'},),
-            schema+'name': ({'@value': 'Hello, my name is...'},),
+            '@type': [schema+'DefinedTerm',],
+            schema+'termCode': [{'@value': 'urn:uuid:master'},],
+            schema+'name': [{'@value': 'Hello, my name is...'},],
         }
 
         target, result, matches_id = improve_keyword(keyword)
 
         test.eq({
-            '@type': (schema+'DefinedTerm',),
+            '@type': [schema+'DefinedTerm',],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-2222-3333-4444-123456123456',
-            schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-            schema+'termCode': ({'@value': 'master'},),
-            schema+'name': ({'@language':'nl', '@value': 'WO - Master'},
-                            {'@language':'nl', '@value': 'WO Master'},),
+            schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+            schema+'termCode': [{'@value': 'master'},],
+            schema+'name': [{'@language':'nl', '@value': 'WO - Master'},
+                            {'@language':'nl', '@value': 'WO Master'},],
         }, result, msg=test.diff2)
         test.eq(schema+'educationalLevel', target)
 
@@ -556,91 +559,91 @@ class keywords_flow:
         w, lookup = convert
         improve_keyword = prep_improve_keyword(lookup)
         keyword = {
-            '@type': (schema+'DefinedTerm',),
-            schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},),
-            schema+'name': ({'@value': 'Hello, my name is...'},),
+            '@type': [schema+'DefinedTerm',],
+            schema+'termCode': [{'@value': 'urn:uuid:onderwijs'},],
+            schema+'name': [{'@value': 'Hello, my name is...'},],
         }
 
         target, result, matches_id = improve_keyword(keyword)
 
         test.eq(schema+'educationalAlignment', target)
         test.eq({
-            '@type': (schema+'AlignmentObject',),
+            '@type': [schema+'AlignmentObject',],
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-0000-1111-2222-123456123456',
-            schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-            schema+'targetName': ({'@value': 'onderwijs'},),
-            schema+'name': ({'@language':'nl', '@value': 'Onderwijs'},),
+            schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+            schema+'targetName': [{'@value': 'onderwijs'},],
+            schema+'name': [{'@language':'nl', '@value': 'Onderwijs'},],
         }, result, msg=test.diff2)
 
     @test
     def integrate_flow_1_and_flow_2(convert):
         w, lookup = convert
         start = {
-            schema+'teaches':({
-                '@type': (schema+'DefinedTerm',),
-                schema+'termCode': ({'@value': 'urn:uuid:rekenen'},),
-                schema+'name': ({'@value': 'Hello, my name is...'},),
+            schema+'teaches':[{
+                '@type': [schema+'DefinedTerm',],
+                schema+'termCode': [{'@value': 'urn:uuid:rekenen'},],
+                schema+'name': [{'@value': 'Hello, my name is...'},],
             },{
-                '@type': (schema+'DefinedTerm',),
-                schema+'termCode': ({'@value': 'urn:uuid:onderwijs'},),
-                schema+'name': ({'@value': 'Eigenlijk schema:educationalAlignment'},),
+                '@type': [schema+'DefinedTerm',],
+                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'},],
+                schema+'name': [{'@value': 'Eigenlijk schema:educationalAlignment'},],
             },{
-                '@type': (schema+'DefinedTerm',),
-                schema+'termCode': ({'@value': 'zo maar'},),
-                schema+'name': ({'@value': 'Gewoon keyword'},),
-            },),
-            schema+'keywords':({
-                '@type': (schema+'DefinedTerm',),
-                schema+'termCode': ({'@value': 'urn:uuid:master'},),
-                schema+'name': ({'@value': 'Eigenlijk schema:educationalLevel'},),
+                '@type': [schema+'DefinedTerm',],
+                schema+'termCode': [{'@value': 'zo maar'},],
+                schema+'name': [{'@value': 'Gewoon keyword'},],
+            },],
+            schema+'keywords':[{
+                '@type': [schema+'DefinedTerm',],
+                schema+'termCode': [{'@value': 'urn:uuid:master'},],
+                schema+'name': [{'@value': 'Eigenlijk schema:educationalLevel'},],
             },
             {'@value': 'integratietest'},
-            ),
-            schema+'educationalAlignment': ({
-                '@type': (schema+'AlignmentObject',),
+            ],
+            schema+'educationalAlignment': [{
+                '@type': [schema+'AlignmentObject',],
                 '@id': 'http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456',
-                schema+'targetName': ({'@value': 'weet niet'},),
-                schema+'name': ({'@value': 'een schema:educationalAlignment'},),
-            },)
+                schema+'targetName': [{'@value': 'weet niet'},],
+                schema+'name': [{'@value': 'een schema:educationalAlignment'},],
+            },]
         }
 
         result = w(start)
 
         test.eq({
-            schema+'teaches': ({
-                '@type': (schema+'DefinedTerm',),
+            schema+'teaches': [{
+                '@type': [schema+'DefinedTerm',],
                 '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1111-2222-3333-123456123456',
-                schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-                schema+'termCode': ({'@value': 'rekenen'},),
-                schema+'name': ({'@language':'nl', '@value': 'Handig rekenen'},),
-            },),
-            schema+'educationalAlignment': ({
-                '@type': (schema+'AlignmentObject',),
+                schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+                schema+'termCode': [{'@value': 'rekenen'},],
+                schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
+            },],
+            schema+'educationalAlignment': [{
+                '@type': [schema+'AlignmentObject',],
                 '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-0000-1111-2222-123456123456',
-                schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-                schema+'targetName': ({'@value': 'onderwijs'},),
-                schema+'name': ({'@language':'nl', '@value': 'Onderwijs'},),
+                schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+                schema+'targetName': [{'@value': 'onderwijs'},],
+                schema+'name': [{'@language':'nl', '@value': 'Onderwijs'},],
             },{
-                '@type': (schema+'AlignmentObject',),
+                '@type': [schema+'AlignmentObject',],
                 '@id': 'http://purl.edustandaard.nl/begrippenkader/87654321-0000-1111-2222-123456123456',
-                schema+'educationalFramework': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-                schema+'targetName': ({'@value': 'aanvulling'},),
-                schema+'name': ({'@language':'nl', '@value': 'De aanvulling'},),
-            },),
-            schema+'educationalLevel': ({
-                '@type': (schema+'DefinedTerm',),
+                schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+                schema+'targetName': [{'@value': 'aanvulling'},],
+                schema+'name': [{'@language':'nl', '@value': 'De aanvulling'},],
+            },],
+            schema+'educationalLevel': [{
+                '@type': [schema+'DefinedTerm',],
                 '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-2222-3333-4444-123456123456',
-                schema+'inDefinedTermSet': ({'@value': 'http://purl.edustandaard.nl/begrippenkader'},),
-                schema+'termCode': ({'@value': 'master'},),
-                schema+'name': ({'@language':'nl', '@value': 'WO - Master'},
-                                {'@language':'nl', '@value': 'WO Master'},),
-            },),
-            schema+'keywords':({
+                schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+                schema+'termCode': [{'@value': 'master'},],
+                schema+'name': [{'@language':'nl', '@value': 'WO - Master'},
+                                {'@language':'nl', '@value': 'WO Master'},],
+            },],
+            schema+'keywords':[{
                 '@value': 'integratietest',
             },{
-                '@type': (schema+'DefinedTerm',),
-                schema+'termCode': ({'@value': 'zo maar'},),
-                schema+'name': ({'@value': 'Gewoon keyword'},),
-            },),
+                '@type': [schema+'DefinedTerm',],
+                schema+'termCode': [{'@value': 'zo maar'},],
+                schema+'name': [{'@value': 'Gewoon keyword'},],
+            },],
         }, result, msg=test.diff2)
 

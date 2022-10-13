@@ -23,7 +23,7 @@
 #
 ## end license ##
 
-from metastreams.jsonld import walk, identity, ignore_silently
+from metastreams.jsonld import walk, identity, ignore_silently, tuple2list
 from .defined_term import defined_term, improve_keywords, result_to_defined_term
 from .ns import schema, lom, dcterms, edurep_terms, to_curie
 import kennisnet.jsonld.utils as utils
@@ -33,15 +33,6 @@ def getp_first_value(d, p):
     for i in d.get(p, []):
         return i.get('@value')
     return None
-
-
-def copy(rules):
-    r = walk(rules)
-
-    def copy_fn(a,s,p,os):
-        a[p] = [r(o) for o in os]
-        return a
-    return copy_fn
 
 
 def first(l):
@@ -223,12 +214,12 @@ def prepare_enrich(lookupObject=None):
     def enrich(data):
         result = w(data)
         for target, matches_id in result.pop('exactMatch', []):
-            terms = result.get(target, ())
+            terms = result.get(target, [])
             if any(matches_id == item.get('@id') for item in terms):
                 continue
             term = result_to_defined_term(lookupObject.lookupById('urn:edurep:conceptset', matches_id), target)
-            result[target] = terms + (term,)
-        return result
+            result[target] = terms + [term]
+        return tuple2list(result)
     return enrich, info
 
 
@@ -398,8 +389,6 @@ def test_invalid(enrich_and_lookup:1):
     test.eq(x,[r], msg=test.diff)
     test.eq([('schema:audience', 'no such thing')], lookup.invalid)
 
-tuple2list = lambda x:json.loads(json.dumps(x))
-
 @test
 def test_educationallevel(enrich_and_lookup):
     enricher, lookup = enrich_and_lookup
@@ -419,7 +408,7 @@ def test_educationallevel(enrich_and_lookup):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    test.eq(x[0],tuple2list(r), msg=test.diff2)
+    test.eq(x[0], r, msg=test.diff2)
 
 @test
 def test_educationallevel_by_id(enrich_and_lookup):
@@ -438,7 +427,7 @@ def test_educationallevel_by_id(enrich_and_lookup):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    test.eq(x[0],tuple2list(r), msg=test.diff)
+    test.eq(x[0], r, msg=test.diff)
 
 @test
 def test_educationallevel_copy(enrich_and_lookup:(0,1)):
@@ -462,7 +451,7 @@ def test_educationallevel_copy(enrich_and_lookup:(0,1)):
                             '@value': 'Copy'},
             }
         })
-    test.eq(x[0],tuple2list(r), msg=test.diff)
+    test.eq(x[0], r, msg=test.diff)
     test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:uuid')], lookup.not_found)
 
 @test
@@ -485,7 +474,7 @@ def test_educationallevel_copy_with_lookup(enrich_and_lookup):
                             '@value': 'Nederlandse tekst'},
             'schema:termCode': 'my_nl'},
         })
-    test.eq(x[0],tuple2list(r), msg=test.diff)
+    test.eq(x[0], r, msg=test.diff)
 
 @test
 def test_educationallevel_copy_multi(enrich_and_lookup:(0,1)):
@@ -539,7 +528,7 @@ def test_educationallevel_copy_multi(enrich_and_lookup:(0,1)):
                             '@value': 'Voortgezet Onderwijs'},
             }]
         })
-    test.eq(x[0], tuple2list(r), msg=test.diff)
+    test.eq(x[0],  r, msg=test.diff)
     test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:id')], lookup.not_found)
 
 @test
@@ -569,7 +558,7 @@ def test_educationallevel_copy_with_lookup_and_match(enrich_and_lookup):
                             '@value': 'Hetzelfde'},
             },
         ]})
-    test.eq(x[0], tuple2list(r), msg=test.diff)
+    test.eq(x[0],  r, msg=test.diff)
 
 @test
 def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_lookup):
@@ -605,7 +594,7 @@ def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_
             'schema:termCode': 'some code'
         }],
         })
-    test.eq(x[0], tuple2list(r), msg=test.diff2)
+    test.eq(x[0],  r, msg=test.diff2)
 
 @test
 def test_definition(enrich_and_lookup):
