@@ -55,38 +55,35 @@ def values(os):
     for o in os:
         yield o['@value']
 
-def _definition_fns(type, value_p=None, source_p=None, identifier_p=None):
+def definition(target_p, lookup, scheme, type, identifier_p):
     def value_fn(o):
-        return getp_first_value(o, identifier_p) or getp_first_value(o, value_p) or o.get('@value') or o.get('@id')
+        return getp_first_value(o, identifier_p) or o.get('@value')
 
     def build_fn(l):
         new_o = {}
-        if value_p:
-            for v,lang in l.labels:
-                new_o.setdefault(value_p, []).append(utils.as_value(v,lang))
-        if identifier_p and l.identifier:
+        if l.identifier:
             new_o[identifier_p] = [{'@value': l.identifier}]
-        if source_p and l.source:
-            new_o[source_p] = [{'@value': l.source}]
-        # if
         if not l.id is None:
             new_o['@id'] = l.id
         if new_o:
             new_o['@type'] = [type]
             return new_o
-    return value_fn, build_fn
-
-def definition(target_p, lookup, **kwargs):
-    value_fn, build_fn = _definition_fns(**kwargs)
 
     def check_fn(a,s,p,os):
         result = a.get(target_p, [])
         for o in os:
             target = target_p
             value = value_fn(o)
-            if not value:
+            id = o.get('@id')
+            if not (value or id):
                 continue
-            l = lookup(value)
+            if value:
+                l = lookup.lookupByValue(scheme, value)
+            else:
+                l = lookup.lookupById(id)
+            if l.identifier is None and l.id is None:
+                lookup.report_invalid(to_curie(target_p), value or id)
+                continue
 
             new = build_fn(l)
             if new:
@@ -96,30 +93,38 @@ def definition(target_p, lookup, **kwargs):
         if result:
             addition[target_p] = result
         return a | addition
+    check_fn.lookup_info = {scheme:{'invalid': to_curie(target_p)}}
     return check_fn
 
 
-def text(target_p, lookup):
+def text(target_p, lookup, scheme):
     def text_fn(a,s,p,os):
         result = a.get(target_p, [])
         for v in values(os):
-            l = lookup(v)
+            l = lookup.lookupByValue(scheme, v)
             if l.identifier:
                 result.append({'@value':l.identifier})
+            else:
+                lookup.report_invalid(to_curie(target_p), v)
         return a | {target_p:result}
+    text_fn.lookup_info = {scheme:{'invalid': to_curie(target_p)}}
     return text_fn
 
-def cost(target_p, lookup):
+def cost(target_p, lookup, scheme):
     def text_fn(a,s,p,os):
+        '''Dit is een tijdelijk veld om waarde over te nemen uit het lom/cost veld. Waardes worden omgezet naar True of False voor schema:isAccessibleForFree'''
         for v in values(os):
-            l = lookup(v)
+            l = lookup.lookupByValue(scheme, v)
             if l.identifier:
                 return a | {target_p:[{'@value': l.identifier != 'yes'}]}
+            else:
+                lookup.report_invalid(to_curie(target_p), v)
         return a
+    text_fn.lookup_info = {scheme:{'invalid': to_curie(target_p)}}
     return text_fn
 
 
-def license(target_p, lookup):
+def license(target_p, lookup, scheme):
 
     def license_fn(a, s, p, os):
         '''Op basis van lom:copyrightAndOtherRestrictions wordt een lookup gedaan.
@@ -132,12 +137,16 @@ def license(target_p, lookup):
             # Already a result
             return a
         for v in values(s.get(lom+'copyrightAndOtherRestrictions', [])):
-            l = lookup(v)
+            l = lookup.lookupByValue(scheme, v)
+            if not l.uri:
+                l = lookup.lookupById(scheme, v)
             if l.uri:
                 r_license.append({'@value': l.uri})
                 r_other.append({'@value': v})
                 for v,lang in l.labels:
                     r_notice.append(utils.as_value(v,lang))
+            else:
+                lookup.report_invalid(to_curie(schema+'license'), v)
         if not r_license: #nothing new, keep old stuff
             r_other = s.get(lom+'copyrightAndOtherRestrictions', [])
             r_notice = s.get(schema+'copyrightNotice', [])
@@ -149,10 +158,12 @@ def license(target_p, lookup):
                 (schema+'license', r_license),
             ] if v}
         return a | new
+    license_fn.lookup_info = {scheme:{'invalid': to_curie(schema+'license')}}
     return license_fn
 
 
 def is_boolean(a,s,p,os):
+    '''Valideer dat waardes True of False zijn, waarden als 'yes','no','ja' en 'nee' worden vertaald.'''
     result = a.get(p, [])
     for v in values(os):
         if type(v) is bool:
@@ -165,30 +176,14 @@ def is_boolean(a,s,p,os):
         return a | {p:result}
     return a
 
-keyword_definition = dict(
-        target_p=schema+'keywords',
-        type=schema+'DefinedTerm',
-        value_p=schema+'name',
-        identifier_p=schema+'termCode',
-        source_p=schema+'inDefinedTermSet',
-    )
-
 def prepare_enrich(lookupObject=None):
-    info = {}
-    # def target_and_lookup(target_p, scheme):
-    #     key = _key(target_p)
-    #     lookup_key = key + key_suffix
-    #     # Key is used in Edurep for reporting, see kennisnet/edurep/ld/lom10toldgraph.py
-    #     info.setdefault(key, {}).setdefault('lookups', {})[scheme] = {'invalid': lookup_key}
-    #     def lookup_fn(value):
-    #         return lookup(key=lookup_key, scheme=scheme, value=value)
-    #     return dict(target_p=target_p, lookup=lookup_fn)
-
+    info = {
+    }
 
     license_fn = license(schema+'license', lookupObject, scheme='urn:lms:license')
 
     rules = {
-        schema+'keywords': improve_keywords(lookupByTermCode),
+        schema+'keywords': improve_keywords(lookupObject),
         schema+'creativeWorkStatus': text(schema+'creativeWorkStatus', lookup=lookupObject, scheme='urn:lms:status'),
         schema+'interactivityType': text(schema+'interactivityType', lookup=lookupObject, scheme='urn:lms:interactivitytype'),
         schema+'encodingFormat': text(schema+'encodingFormat', lookup=lookupObject, scheme='urn:lms:mimetype'),
@@ -212,13 +207,16 @@ def prepare_enrich(lookupObject=None):
     }
     for k, v in rules.items():
         doc = None
+        lookup_info = None
         if callable(v):
             doc = v.__doc__
+            lookup_info = getattr(v, 'lookup_info', None)
         elif isinstance(v, dict):
             doc = v.get('documentation')
-        if doc is None:
-            continue
-        info.setdefault(to_curie(k), {})['documentation'] = doc
+        if not doc is None:
+            info.setdefault(to_curie(k), {})['documentation'] = doc
+        if not lookup_info is None:
+            info.setdefault(to_curie(k), {}).setdefault('lookups', {}).update(lookup_info)
 
 
     w = walk(rules)
@@ -228,7 +226,7 @@ def prepare_enrich(lookupObject=None):
             terms = result.get(target, ())
             if any(matches_id == item.get('@id') for item in terms):
                 continue
-            term = result_to_defined_term(lookupById(matches_id), target)
+            term = result_to_defined_term(lookupObject.lookupById('urn:edurep:conceptset', matches_id), target)
             result[target] = terms + (term,)
         return result
     return enrich, info
@@ -313,14 +311,16 @@ class MockLookup:
     def __init__(self):
         self.not_found = []
         self.invalid = []
+        self.by_id = {}|testlookupdata['byId']
+        self.by_value = {}|testlookupdata['byValue']
     def report_invalid(self, key, value):
         self.invalid.append((key, value))
     def report_not_found(self, key, value):
         self.not_found.append((key, value))
     def lookupById(self, scheme, value):
-        return testlookupdata['byId'].get(scheme, {}).get(value, _l())
+        return self.by_id.get(scheme, {}).get(value, _l())
     def lookupByValue(self, scheme, value):
-        return testlookupdata['byValue'].get(scheme, {}).get(value, _l())
+        return self.by_value.get(scheme, {}).get(value, _l())
 
 def example(d):
     return jsonld.expand({
@@ -329,12 +329,14 @@ def example(d):
         'schema:name': 'Name'}|d)
 
 @test.fixture
-def enrich_and_lookup():
+def enrich_and_lookup(nr_invalid=0, nr_not_found=0):
     lookup = MockLookup()
     yield prepare_enrich(lookup)[0], lookup
+    test.eq(nr_invalid, len(lookup.invalid))
+    test.eq(nr_not_found, len(lookup.not_found))
 
 @test
-def test_setup(enrich_and_lookup):
+def test_setup(enrich_and_lookup:1):
     enricher, lookup = enrich_and_lookup
     test.eq(None, lookup.lookupByValue('scheme', 'value').source)
     test.eq('http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml',
@@ -343,7 +345,7 @@ def test_setup(enrich_and_lookup):
     test.eq([('schema:name', 'No name')], lookup.invalid)
 
 @test
-def test_audience(enrich_and_lookup):
+def test_audience(enrich_and_lookup:1):
     enricher, lookup = enrich_and_lookup
     i = example({
         'schema:audience':[{
@@ -368,6 +370,7 @@ def test_audience(enrich_and_lookup):
             '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
         }]})
     test.eq(x,[r], msg=test.diff)
+    test.eq([('schema:audience', 'wrong')], lookup.invalid)
 
 @test
 def test_audience_from_value(enrich_and_lookup):
@@ -383,7 +386,7 @@ def test_audience_from_value(enrich_and_lookup):
     test.eq(x,[r], msg=test.diff)
 
 @test
-def test_invalid(enrich_and_lookup):
+def test_invalid(enrich_and_lookup:1):
     enricher, lookup = enrich_and_lookup
     i = example({
         'schema:audience':{
@@ -393,6 +396,7 @@ def test_invalid(enrich_and_lookup):
     r = enricher(i[0])
     x = example({})
     test.eq(x,[r], msg=test.diff)
+    test.eq([('schema:audience', 'no such thing')], lookup.invalid)
 
 tuple2list = lambda x:json.loads(json.dumps(x))
 
@@ -437,7 +441,7 @@ def test_educationallevel_by_id(enrich_and_lookup):
     test.eq(x[0],tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy(enrich_and_lookup):
+def test_educationallevel_copy(enrich_and_lookup:(0,1)):
     enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': {
@@ -458,8 +462,8 @@ def test_educationallevel_copy(enrich_and_lookup):
                             '@value': 'Copy'},
             }
         })
-    # TODO id is onbekend, maar dat is prima
     test.eq(x[0],tuple2list(r), msg=test.diff)
+    test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:uuid')], lookup.not_found)
 
 @test
 def test_educationallevel_copy_with_lookup(enrich_and_lookup):
@@ -484,53 +488,7 @@ def test_educationallevel_copy_with_lookup(enrich_and_lookup):
     test.eq(x[0],tuple2list(r), msg=test.diff)
 
 @test
-def test_educationallevel_copy_with_lookup_not_found(enrich_and_lookup):
-    enricher, lookup = enrich_and_lookup
-    i = example({
-        'schema:educationalLevel': {
-            '@id': 'http://purl.edustandaard.nl/begrippenkader/made_up',
-            '@type': 'schema:DefinedTerm',
-            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
-            'schema:name': {'@language': 'nl',
-                            '@value': 'Made Up Tekst'},
-            'schema:termCode': 'made_up'},
-        })
-    r = enricher(i[0])
-    x = example({
-        'schema:educationalLevel': {
-            '@id': 'http://purl.edustandaard.nl/begrippenkader/made_up',
-            '@type': 'schema:DefinedTerm',
-            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
-            'schema:name': {'@language': 'nl',
-                            '@value': 'Made Up Tekst'},
-            'schema:termCode': 'made_up'},
-        })
-    test.eq(x[0], tuple2list(r), msg=test.diff)
-
-@test
-def test_educationallevel_copy_with_lookup(enrich_and_lookup):
-    enricher, lookup = enrich_and_lookup
-    i = example({
-        'schema:educationalLevel': {
-            '@id': 'http://purl.edustandaard.nl/begrippenkader/B79AA975CFC24FBB90939B4A2E7B05A6',
-            '@type': 'schema:DefinedTerm',
-            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
-            'schema:termCode': 'b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6'},
-        })
-    r = enricher(i[0])
-    x = example({
-        'schema:educationalLevel': {
-            '@id': 'http://purl.edustandaard.nl/begrippenkader/b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6',
-            '@type': 'schema:DefinedTerm',
-            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
-            'schema:name': {'@language': 'en',
-                            '@value': 'Improved'},
-            'schema:termCode': 'b79aa975-cfc2-4fbb-9093-9b4a2e7b05a6'},
-        })
-    test.eq(x[0], tuple2list(r), msg=test.diff)
-
-@test
-def test_educationallevel_copy_multi(enrich_and_lookup):
+def test_educationallevel_copy_multi(enrich_and_lookup:(0,1)):
     enricher, lookup = enrich_and_lookup
     i = example({
         'schema:educationalLevel': [{
@@ -582,6 +540,7 @@ def test_educationallevel_copy_multi(enrich_and_lookup):
             }]
         })
     test.eq(x[0], tuple2list(r), msg=test.diff)
+    test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:id')], lookup.not_found)
 
 @test
 def test_educationallevel_copy_with_lookup_and_match(enrich_and_lookup):
@@ -648,52 +607,41 @@ def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_
         })
     test.eq(x[0], tuple2list(r), msg=test.diff2)
 
-def prepare_lookup(no_result_for=None):
-    looked = []
-    def lookup(v):
-        looked.append(v)
-        if v == no_result_for:
-            return _l()
-        return _l(id='urn:id', identifier='identifier', labels=[('aap', 'nl'), ('ape', 'en')], source='source')
-    return looked, lookup
-
 @test
-def test_definition():
-    looked, lookup = prepare_lookup()
+def test_definition(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
+    lookup.by_value['test:lookup'] = {
+            'value': _l(id='urn:id', identifier='identifier', labels=[('aap', 'nl'), ('ape', 'en')], source='source')}
 
-    df = definition(target_p='target_p', lookup=lookup, type='type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
+    df = definition(target_p='target_p', lookup=lookup, scheme='test:lookup', type='type', identifier_p='identifier_p')
     acc = {'has':'value'}
     os = [{'@value':'value'}]
     s = {'value_p':os}
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq(['value'], looked)
     test.eq({'has': 'value',
         'target_p': [{
-            'value_p': [{'@value': 'aap', '@language': 'nl'},
-                        {'@value': 'ape', '@language': 'en'}],
             'identifier_p': [{'@value': 'identifier'}],
-            'source_p': [{'@value': 'source'}],
             '@id': 'urn:id',
             '@type': ['type']
             }]
-        }, r)
+        }, r, msg=test.diff2)
 
 @test
-def test_definition_not_found():
-    looked, lookup = prepare_lookup(no_result_for='value')
+def test_definition_not_found(enrich_and_lookup:1):
+    enricher, lookup = enrich_and_lookup
 
-    df = definition(target_p='target_p', lookup=lookup, type='type', value_p='value_p', source_p='source_p', identifier_p='identifier_p')
+    df = definition(target_p='target_p', lookup=lookup, scheme='test:lookup', type='type', identifier_p='identifier_p')
     acc = {'has':'value'}
     os = [{'@value':'value'}]
     s = {'value_p':os}
     p = 'pred'
     r = df(acc,s,p,os)
 
-    test.eq(['value'], looked)
     test.eq({'has': 'value',
         }, r)
+    test.eq([('target_p', 'value')], lookup.invalid)
 
 @test
 def test_text(enrich_and_lookup):
@@ -725,7 +673,7 @@ def test_isAccessibleForFree(enrich_and_lookup):
     test.eq(x[0],r, msg=test.diff)
 
 @test
-def test_license(enrich_and_lookup):
+def test_license(enrich_and_lookup:1):
     enricher, lookup = enrich_and_lookup
     i = example({
         'lom:copyrightAndOtherRestrictions': 'cc-by-40',
@@ -747,12 +695,11 @@ def test_license(enrich_and_lookup):
         'schema:copyrightNotice': 'Notice stays'})
     test.eq(x[0],r, msg=test.diff)
 
-    i = example({
-        'schema:copyrightNotice': 'Notice stays'})
-    # from schema:license
+    test.eq([('schema:license', 'some unresolvable text')], lookup.invalid)
 
 
-# @test TODO Documentation
+
+@test
 def test_enrich_info():
     enrich_lookup_info = prepare_enrich(MockLookup())[1]
     test.eq({
@@ -763,40 +710,49 @@ def test_enrich_info():
             'lookups': {
                 'urn:lms:aggregationlevel': {'invalid': 'lom:aggregationLevel'}}},
         'lom:copyrightAndOtherRestrictions': {
-            'documentation': test.any,},
+            'documentation': test.any,
+            'lookups': {
+                'urn:lms:license': {'invalid': 'schema:license'}}},
         'schema:audience': {
             'lookups': {
                 'urn:lms:intendedenduserrole': {'invalid': 'schema:audience'}}},
         'schema:copyrightNotice': {
-            'documentation': test.any,},
+            'documentation': test.any,
+            'lookups': {
+                'urn:lms:license': {'invalid': 'schema:license'}}},
         'schema:creativeWorkStatus': {
             'lookups': {
                 'urn:lms:status': {'invalid': 'schema:creativeWorkStatus'}}},
         'schema:educationalAlignment': {
             'documentation': test.any,
             'lookups': {
-                'urn:edurep:conceptset': {'invalid': 'schema:educationalAlignment.id_for_label'},
-                'urn:lms:disciplinemapping': {'invalid': 'schema:educationalAlignment'}}},
+                'urn:edurep:conceptset': {'not_found': 'schema:educationalAlignment'}}},
         'schema:educationalLevel': {
             'documentation': test.any,
             'lookups': {
-                'urn:edurep:conceptset': {'invalid': 'schema:educationalLevel.id_for_label'},
-                'urn:lms:educationallevel': {'invalid': 'schema:educationalLevel'}}},
+                'urn:edurep:conceptset': {'not_found': 'schema:educationalLevel'}}},
         'schema:encodingFormat': {
             'lookups': {
                 'urn:lms:mimetype': {'invalid': 'schema:encodingFormat'}}},
         'schema:interactivityType': {
             'lookups': {
                 'urn:lms:interactivitytype': {'invalid': 'schema:interactivityType'}}},
+        'lom:cost': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:lms:cost': {'invalid': 'schema:isAccessibleForFree'}}},
         'schema:isAccessibleForFree': {
-            'lookups': {'urn:lms:cost': {'invalid': 'schema:isAccessibleForFree'}}},
+            'documentation': test.any},
         'schema:license': {
             'documentation': test.any,
             'lookups': {
                 'urn:lms:license': {'invalid': 'schema:license'}}},
+        'schema:keywords': {
+            'documentation': test.any,
+            'lookups': {
+                'urn:edurep:conceptset': {}}},
         'schema:teaches': {
             'documentation': test.any,
             'lookups': {
-                'urn:edurep:conceptset': {'invalid': 'schema:teaches.id_for_label'},
-                'urn:lms:po_kerndoel': {'invalid': 'schema:teaches'}}}
-        }, enrich_lookup_info, msg=test.diff)
+                'urn:edurep:conceptset': {'not_found': 'schema:teaches'}}}
+        }, enrich_lookup_info, msg=test.diff2)

@@ -121,6 +121,9 @@ def prep_improve_keyword(lookupObject):
 def improve_keywords(lookupObject):
     improve_keyword = prep_improve_keyword(lookupObject)
     def keywords_fn(a,s,p,os):
+        '''Dit veld wordt gecontroleerd in stap 2.1 van de zogenaamde Flow
+        2.1 Op basis van termCode wordt gezocht in prefLabel, altLabel, hiddenLabel op een match. Als in de match een type is opgenomen, dan wordt het keyword verplaatst.
+        '''
         created_keywords = a.get(p,())
         newdata = {p:[]}
         for keyword in os:
@@ -135,6 +138,7 @@ def improve_keywords(lookupObject):
             newdata[target_p].append(keyword)
         newdata[p].extend(created_keywords)
         return a|{k:tuple(v) for k,v in newdata.items() if v}
+    keywords_fn.lookup_info = {'urn:edurep:conceptset':{}}
     return keywords_fn
 
 
@@ -146,7 +150,6 @@ def prep_improve_definedterm(lookupObject):
         lookup_result = lookupObject.lookupById('urn:edurep:conceptset', termId)
         if not lookup_result.id:
             lookupObject.report_not_found(to_curie(target_p), termId)
-            #TODO not_found (welk veld???)
             return term, None
         term['@id'] = lookup_result.id
         termCodeKey = schema+'targetName' if term.get('@type') == (schema+'AlignmentObject',) else schema+'termCode'
@@ -172,6 +175,12 @@ def defined_term(target_p, lookupObject):
     improve_definedterm = prep_improve_definedterm(lookupObject)
 
     def defined_term_fn(a,s,p,os):
+        '''Dit veld wordt gecontroleerd in 3 stappen, de zogenaamde Flow:
+        1. Is de term een curriculumwaarde (@id of inDefinedTermSet), zo niet dan verplaatsen naar schema:keywords.
+        2.1 Zie schema:keywords
+        2.2 vul label en termCode aan op basis van @id
+        3 Voeg een DefinedTerm toe op basis van exactMatch
+        '''
         results = {'exactMatch': []}
         for term in os:
             is_cur, curriculum_uri = is_curriculum_waarde_in_term(term, inDefinedTermSet)
@@ -191,6 +200,7 @@ def defined_term(target_p, lookupObject):
                 results['exactMatch'].append((target, matches_id))
             results[target] += (result,)
         return a|{k:v for k,v in results.items() if v}
+    defined_term_fn.lookup_info = {'urn:edurep:conceptset':{'not_found': to_curie(target_p)}}
     return defined_term_fn
 
 __all__ = ['defined_term', 'improve_keywords', 'result_to_defined_term']
