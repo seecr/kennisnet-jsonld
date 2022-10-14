@@ -113,7 +113,12 @@ def prep_improve_keyword(lookupObject):
     def improve_keyword(d):
         assert d['@type'] == [schema+'DefinedTerm']
         termCode = sfc.get_in(d, (schema+'termCode', 0, '@value'))
-        l_result = lookupObject.lookupByValue('urn:edurep:conceptset', termCode)
+        search_for = [termCode] + [v['@value'] for v in d.get(schema+'name', {}) if '@value' in v]
+        l_result = None
+        for search in search_for:
+            l_result = lookupObject.lookupByValue('urn:edurep:conceptset', search)
+            if l_result and l_result.type:
+                break
         if not l_result or not l_result.type:
             return schema+'keywords', d, None
         target_p = type_to_target[l_result.type]
@@ -471,6 +476,13 @@ class keywords_flow:
                 labels=[('Onderwijs', 'nl')],
                 type=edurep_terms+'Discipline',
             ),
+            'Handig rekenen': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/12345678-1111-2222-3333-123456123456',
+                identifier='rekenen',
+                source='http://purl.edustandaard.nl/begrippenkader',
+                labels=[('Handig rekenen', 'nl')],
+                type=edurep_terms+'EducationalObjective',
+            ),
             'urn:uuid:rekenen': _l(
                 id='http://purl.edustandaard.nl/begrippenkader/12345678-1111-2222-3333-123456123456',
                 identifier='rekenen',
@@ -519,6 +531,26 @@ class keywords_flow:
             '@type': [schema+'DefinedTerm',],
             schema+'termCode': [{'@value': 'urn:uuid:rekenen'},],
             schema+'name': [{'@value': 'Hello, my name is...'},],
+        }
+
+        target, result, matches_id = improve_keyword(keyword)
+
+        test.eq({
+            '@type': [schema+'DefinedTerm',],
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1111-2222-3333-123456123456',
+            schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
+            schema+'termCode': [{'@value': 'rekenen'},],
+            schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
+        }, result, msg=test.diff2)
+        test.eq(schema+'teaches', target)
+
+    @test
+    def keywords_to_teaches_on_name(convert):
+        w, lookup = convert
+        improve_keyword = prep_improve_keyword(lookup)
+        keyword = {
+            '@type': [schema+'DefinedTerm',],
+            schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
         }
 
         target, result, matches_id = improve_keyword(keyword)
