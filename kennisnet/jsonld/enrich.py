@@ -226,7 +226,8 @@ def prepare_enrich(lookupObject=None):
 __all__ = ['prepare_enrich']
 
 from pyld import jsonld
-from autotest import test
+import autotest
+test = autotest.get_tester(__name__)
 from pprint import pprint
 from collections import namedtuple
 import json
@@ -360,7 +361,7 @@ def test_audience(enrich_and_lookup:1):
             '@type': 'schema:Audience',
             '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#teacher',
         }]})
-    test.eq(x,[r], msg=test.diff)
+    test.eq(x,[r], diff=test.diff)
     test.eq([('schema:audience', 'wrong')], lookup.invalid)
 
 @test
@@ -374,7 +375,7 @@ def test_audience_from_value(enrich_and_lookup):
             '@type': 'schema:Audience',
             '@id': 'http://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
         }]})
-    test.eq(x,[r], msg=test.diff)
+    test.eq(x,[r], diff=test.diff)
 
 @test
 def test_invalid(enrich_and_lookup:1):
@@ -386,7 +387,7 @@ def test_invalid(enrich_and_lookup:1):
         }})
     r = enricher(i[0])
     x = example({})
-    test.eq(x,[r], msg=test.diff)
+    test.eq(x,[r], diff=test.diff)
     test.eq([('schema:audience', 'no such thing')], lookup.invalid)
 
 @test
@@ -408,7 +409,7 @@ def test_educationallevel(enrich_and_lookup):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    test.eq(x[0], r, msg=test.diff2)
+    test.eq(x[0], r, diff=test.diff2)
 
 @test
 def test_educationallevel_by_id(enrich_and_lookup):
@@ -427,7 +428,7 @@ def test_educationallevel_by_id(enrich_and_lookup):
                             '@value': 'VO'},
             'schema:termCode': '2a1401e9-c223-493b-9b86-78f6993b1a8d'},
         })
-    test.eq(x[0], r, msg=test.diff)
+    test.eq(x[0], r, diff=test.diff)
 
 @test
 def test_educationallevel_copy(enrich_and_lookup:(0,1)):
@@ -451,7 +452,7 @@ def test_educationallevel_copy(enrich_and_lookup:(0,1)):
                             '@value': 'Copy'},
             }
         })
-    test.eq(x[0], r, msg=test.diff)
+    test.eq(x[0], r, diff=test.diff)
     test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:uuid')], lookup.not_found)
 
 @test
@@ -474,7 +475,7 @@ def test_educationallevel_copy_with_lookup(enrich_and_lookup):
                             '@value': 'Nederlandse tekst'},
             'schema:termCode': 'my_nl'},
         })
-    test.eq(x[0], r, msg=test.diff)
+    test.eq(x[0], r, diff=test.diff)
 
 @test
 def test_educationallevel_copy_multi(enrich_and_lookup:(0,1)):
@@ -528,7 +529,7 @@ def test_educationallevel_copy_multi(enrich_and_lookup:(0,1)):
                             '@value': 'Voortgezet Onderwijs'},
             }]
         })
-    test.eq(x[0],  r, msg=test.diff)
+    test.eq(x[0],  r, diff=test.diff)
     test.eq([('schema:educationalLevel', 'http://purl.edustandaard.nl/begrippenkader/some:unknown:id')], lookup.not_found)
 
 @test
@@ -558,7 +559,7 @@ def test_educationallevel_copy_with_lookup_and_match(enrich_and_lookup):
                             '@value': 'Hetzelfde'},
             },
         ]})
-    test.eq(x[0],  r, msg=test.diff)
+    test.eq(x[0],  r, diff=test.diff)
 
 @test
 def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_lookup):
@@ -594,7 +595,7 @@ def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_
             'schema:termCode': 'some code'
         }],
         })
-    test.eq(x[0],  r, msg=test.diff2)
+    test.eq(x[0],  r, diff=test.diff2)
 
 @test
 def test_definition(enrich_and_lookup):
@@ -615,7 +616,7 @@ def test_definition(enrich_and_lookup):
             '@id': 'urn:id',
             '@type': ['type']
             }]
-        }, r, msg=test.diff2)
+        }, r, diff=test.diff2)
 
 @test
 def test_definition_not_found(enrich_and_lookup:1):
@@ -638,7 +639,7 @@ def test_text(enrich_and_lookup):
     i = example({'schema:creativeWorkStatus': 'definitief'})
     r = enricher(i[0])
     x = example({'schema:creativeWorkStatus': 'final'})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
 @test
 def test_cost(enrich_and_lookup):
@@ -646,7 +647,7 @@ def test_cost(enrich_and_lookup):
     i = example({'lom:cost': 'ja'})
     r = enricher(i[0])
     x = example({'schema:isAccessibleForFree': False})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
 @test
 def test_isAccessibleForFree(enrich_and_lookup):
@@ -654,12 +655,12 @@ def test_isAccessibleForFree(enrich_and_lookup):
     i = example({'schema:isAccessibleForFree': False})
     r = enricher(i[0])
     x = example({'schema:isAccessibleForFree': False})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
     i = example({'schema:isAccessibleForFree': 'false'})
     r = enricher(i[0])
     x = example({'schema:isAccessibleForFree': False})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
 @test
 def test_license(enrich_and_lookup:1):
@@ -672,7 +673,7 @@ def test_license(enrich_and_lookup:1):
         'lom:copyrightAndOtherRestrictions': 'cc-by-40',
         'schema:copyrightNotice': {'@language': 'nl', '@value': 'CC BY 4.0'},
         'schema:license': 'http://creativecommons.org/licenses/by/4.0/'})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
 
     i = example({
@@ -682,7 +683,7 @@ def test_license(enrich_and_lookup:1):
     x = example({
         'lom:copyrightAndOtherRestrictions': 'some unresolvable text',
         'schema:copyrightNotice': 'Notice stays'})
-    test.eq(x[0],r, msg=test.diff)
+    test.eq(x[0],r, diff=test.diff)
 
     test.eq([('schema:license', 'some unresolvable text')], lookup.invalid)
 
@@ -744,4 +745,4 @@ def test_enrich_info():
             'documentation': test.any,
             'lookups': {
                 'urn:edurep:conceptset': {'not_found': 'schema:teaches'}}}
-        }, enrich_lookup_info, msg=test.diff2)
+        }, enrich_lookup_info, diff=test.diff2)

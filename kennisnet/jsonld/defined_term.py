@@ -213,7 +213,8 @@ def defined_term(target_p, lookupObject):
 __all__ = ['defined_term', 'improve_keywords', 'result_to_defined_term']
 
 
-from autotest import test
+import autotest
+test = autotest.get_tester(__name__)
 from collections import namedtuple
 _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch', 'type'], defaults=[None, None, None, list(), None, None, None])
 
@@ -292,7 +293,7 @@ class teaches:
                 schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
                 schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
             }]
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
 
     @test
     def keep_unknown_data(convert:1):
@@ -313,7 +314,7 @@ class teaches:
                 schema+'inDefinedTermSet': [{'@value': "http://purl.edustandaard.nl/begrippenkader"}],
                 schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
             }],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
         test.eq([('schema:teaches', 'urn:uuid:onderwijs')], lookup.not_found)
 
     @test
@@ -336,7 +337,7 @@ class teaches:
                 schema+'termCode': [{'@value': 'education'}],
                 schema+'name': [{'@value': 'Onderwijs', '@language': 'nl'}],
             }]
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
 
 class educationalAlignment:
     @test.fixture
@@ -376,7 +377,7 @@ class educationalAlignment:
             schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
             schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
             schema+'name':[{'@value':'Ondewijs'}],
-        }]}, result, msg=test.diff2)
+        }]}, result, diff=test.diff2)
 
     @test
     def keep_data(convert:1):
@@ -395,7 +396,7 @@ class educationalAlignment:
             '@id': "urn:uuid:onderwijs",
             schema+'targetName': [{'@value': 'urn:uuid:onderwijs'},],
             schema+'name':[{'@value':'Ondewijs'},],
-        },]}, result, msg=test.diff2)
+        },]}, result, diff=test.diff2)
         test.eq([('schema:educationalAlignment', 'urn:uuid:onderwijs')], lookup.not_found)
 
     @test
@@ -428,7 +429,7 @@ class educationalAlignment:
                 '@id': "urn:uuid:onderwijs",
                 schema+'termCode': [{'@value': 'urn:uuid:onderwijs'},]
             },],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
         test.eq([('schema:educationalAlignment', 'urn:uuid:onderwijs')], lookup.not_found)
 
     @test
@@ -448,7 +449,7 @@ class educationalAlignment:
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
             schema+'targetName': [{'@value': 'teksten'},],
             schema+'name':[{'@language': 'nl', '@value':'Lezen van zakelijke teksten'},],
-        }]}, result, msg=test.diff2)
+        }]}, result, diff=test.diff2)
 
     @test
     def flow2_2_lookup_by_only_id(convert):
@@ -464,7 +465,7 @@ class educationalAlignment:
             '@id': 'http://purl.edustandaard.nl/begrippenkader/12345678-1234-5678-9012-123456123456',
             schema+'targetName': [{'@value': 'teksten'},],
             schema+'name':[{'@language': 'nl', '@value':'Lezen van zakelijke teksten'}],
-        }]}, result, msg=test.diff2)
+        }]}, result, diff=test.diff2)
 
 class keywords_flow:
     _lookup = LookupObject()
@@ -541,7 +542,7 @@ class keywords_flow:
             schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
             schema+'termCode': [{'@value': 'rekenen'},],
             schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
         test.eq(schema+'teaches', target)
 
     @test
@@ -561,7 +562,7 @@ class keywords_flow:
             schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
             schema+'termCode': [{'@value': 'rekenen'},],
             schema+'name': [{'@language':'nl', '@value': 'Handig rekenen'},],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
         test.eq(schema+'teaches', target)
 
     @test
@@ -583,7 +584,7 @@ class keywords_flow:
             schema+'termCode': [{'@value': 'master'},],
             schema+'name': [{'@language':'nl', '@value': 'WO - Master'},
                             {'@language':'nl', '@value': 'WO Master'},],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
         test.eq(schema+'educationalLevel', target)
 
     @test
@@ -605,7 +606,7 @@ class keywords_flow:
             schema+'educationalFramework': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'},],
             schema+'targetName': [{'@value': 'onderwijs'},],
             schema+'name': [{'@language':'nl', '@value': 'Onderwijs'},],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
 
     @test
     def integrate_flow_1_and_flow_2(convert):
@@ -677,5 +678,5 @@ class keywords_flow:
                 schema+'termCode': [{'@value': 'zo maar'},],
                 schema+'name': [{'@value': 'Gewoon keyword'},],
             },],
-        }, result, msg=test.diff2)
+        }, result, diff=test.diff2)
 

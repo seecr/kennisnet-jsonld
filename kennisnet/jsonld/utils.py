@@ -36,7 +36,8 @@ def pretty_print_uuid(s):
     except ValueError:
         return s
 
-from autotest import test
+import autotest
+test = autotest.get_tester(__name__)
 
 @test
 def uuid_pretty_print():
