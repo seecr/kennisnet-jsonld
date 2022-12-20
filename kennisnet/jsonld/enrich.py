@@ -27,6 +27,8 @@ from metastreams.jsonld import walk, identity, ignore_silently, tuple2list
 from .defined_term import defined_term, improve_keywords, result_to_defined_term
 from .ns import schema, lom, dcterms, edurep_terms, to_curie
 import kennisnet.jsonld.utils as utils
+import seecr.functools.core as sfc
+import urllib.parse
 
 
 def getp_first_value(d, p):
@@ -152,6 +154,22 @@ def license(target_p, lookup, scheme):
     license_fn.lookup_info = {scheme:{'invalid': to_curie(schema+'license')}}
     return license_fn
 
+def add_id_defined_term():
+    def add_id(o):
+        if '@id' in o:
+            return o
+        inDefinedTermSet = sfc.get_in(o, (schema+'inDefinedTermSet', 0, '@value'))
+        termCode = sfc.get_in(o, (schema+'termCode', 0, '@value'))
+        if termCode and inDefinedTermSet:
+            h = '' if inDefinedTermSet[-1] in {'#', '/'} else '#'
+            termCode = urllib.parse.quote(termCode, safe='')
+            o['@id'] = f'{inDefinedTermSet}{h}{termCode}'
+        return o
+    def add_id_fn(a,s,p,os):
+        result = a.get(p, [])
+        result += [add_id(o) for o in os]
+        return a | {p: result}
+    return add_id_fn
 
 def is_boolean(a,s,p,os):
     '''Valideer dat waardes True of False zijn, waarden als 'yes','no','ja' en 'nee' worden vertaald.'''
@@ -191,6 +209,7 @@ def prepare_enrich(lookupObject=None):
         schema+'educationalAlignment': defined_term(schema+'educationalAlignment', lookupObject),
         schema+'educationalLevel': defined_term(schema+'educationalLevel', lookupObject),
         schema+'teaches': defined_term(schema+'teaches', lookupObject),
+        schema+'learningResourceType': add_id_defined_term(),
         schema+'license': license_fn,
         schema+'copyrightNotice': license_fn,
         lom+'copyrightAndOtherRestrictions': license_fn,
@@ -687,6 +706,45 @@ def test_license(enrich_and_lookup:1):
 
     test.eq([('schema:license', 'some unresolvable text')], lookup.invalid)
 
+@test
+def test_learningResourceType(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
+    i = example({
+        'schema:learningResourceType': [{
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },{
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },{
+            "@id": 'some:id:already',
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },
+        ]})
+    r = enricher(i[0])
+    x = example({
+        'schema:learningResourceType': [{
+            "@id": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml#open%20opdracht",
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },{ # double values by id are removed in Edurep by compacting etc.
+            "@id": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml#open%20opdracht",
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },{
+            "@id": "some:id:already",
+            "@type": "schema:DefinedTerm",
+            "schema:inDefinedTermSet": "http://purl.edustandaard.nl/vdex_learningresourcetype_czp_20060628.xml",
+            "schema:termCode": "open opdracht"
+        },
+    ]})
+    test.eq(x[0],r, diff=test.diff)
 
 
 @test
