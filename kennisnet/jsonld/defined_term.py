@@ -27,12 +27,28 @@ from .ns import schema, edurep_terms, to_curie
 from metastreams.jsonld import identity, walk, ignore_silently
 import seecr.functools as sfc
 import kennisnet.jsonld.utils as utils
-
+import seecr.functools.core as sfc
+import urllib.parse
+import rfc3987
 
 def with_predicate(target_p):
     def fn(a,s,p,os):
         return a | {target_p:a.get(target_p, []) + os}
     return fn
+
+def is_uri(s):
+    return s is not None and rfc3987.match(s, rule='absolute_IRI')
+
+def add_id_to_defined_term(term):
+    if '@id' in term:
+        return term
+    inDefinedTermSet = sfc.get_in(term, (schema+'inDefinedTermSet', 0, '@value'))
+    termCode = sfc.get_in(term, (schema+'termCode', 0, '@value'))
+    if termCode and not is_uri(termCode) and is_uri(inDefinedTermSet):
+        h = '' if inDefinedTermSet[-1] in {'#', '/'} else '#'
+        termCode = urllib.parse.quote(termCode, safe='')
+        term['@id'] = f'{inDefinedTermSet}{h}{termCode}'
+    return term
 
 definition_rules = {
     '@type': identity,
@@ -120,7 +136,7 @@ def prep_improve_keyword(lookupObject):
             if l_result and l_result.type:
                 break
         if not l_result or not l_result.type:
-            return schema+'keywords', d, None
+            return schema+'keywords', add_id_to_defined_term(d), None
         target_p = type_to_target[l_result.type]
         return target_p, result_to_defined_term(l_result, target_p), l_result.exactMatch
     return improve_keyword
@@ -242,6 +258,28 @@ def test_is_curriculum_waarde():
     test.eq((False, None),
             is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/'}))
 
+@test
+def test_add_id_to_defined_term():
+    test.eq('uri:like#termCode', add_id_to_defined_term({
+        schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
+        schema+'termCode': [{'@value': 'termCode'}],
+    })['@id'])
+    test.eq(None, add_id_to_defined_term({
+        schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
+        schema+'termCode': [{'@value': 'uri:like'}],
+    }).get('@id'))
+    def test_identity(inp):
+        test.eq(inp, add_id_to_defined_term(inp))
+    test_identity({
+        schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
+        schema+'termCode': [{'@value': 'uri:like'}],
+    })
+    test_identity({
+        schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
+    })
+    test_identity({
+        schema+'termCode':[{'@value': 'termCode'}],
+    })
 
 class LookupObject:
     def __init__(self):
