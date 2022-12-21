@@ -42,8 +42,8 @@ def is_uri(s):
 def add_id_to_defined_term(term):
     if '@id' in term:
         return term
-    inDefinedTermSet = sfc.get_in(term, (schema+'inDefinedTermSet', 0, '@value'))
-    termCode = sfc.get_in(term, (schema+'termCode', 0, '@value'))
+    inDefinedTermSet = sfc.get_in(term, (schema+'inDefinedTermSet', 0, '@value'), '').strip()
+    termCode = sfc.get_in(term, (schema+'termCode', 0, '@value'), '').strip()
     if termCode and not is_uri(termCode) and is_uri(inDefinedTermSet):
         h = '' if inDefinedTermSet[-1] in {'#', '/'} else '#'
         termCode = urllib.parse.quote(termCode, safe='')
@@ -264,6 +264,10 @@ def test_add_id_to_defined_term():
         schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
         schema+'termCode': [{'@value': 'termCode'}],
     })['@id'])
+    test.eq('uri:like:with:space:at:end#termCode', add_id_to_defined_term({
+        schema+'inDefinedTermSet':[{'@value': 'uri:like:with:space:at:end '}],
+        schema+'termCode': [{'@value': 'termCode'}],
+    })['@id'])
     test.eq(None, add_id_to_defined_term({
         schema+'inDefinedTermSet':[{'@value': 'uri:like'}],
         schema+'termCode': [{'@value': 'uri:like'}],
@@ -320,16 +324,17 @@ class teaches:
             schema+'teaches':({
                 '@type': [schema+'DefinedTerm'],
                 schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
-                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+                schema+'termCode': [{'@value': 'onderwijs'}],
             },),
         }
 
         result = w(start)
         test.eq({
             schema+'keywords':[{
+                '@id': 'not:conceptset#onderwijs',
                 '@type': [schema+'DefinedTerm'],
                 schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
-                schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
+                schema+'termCode': [{'@value': 'onderwijs'}],
             }]
         }, result, diff=test.diff2)
 
