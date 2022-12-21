@@ -123,6 +123,7 @@ type_to_target = {
     edurep_terms+'EducationalLevel': schema+'educationalLevel',
     edurep_terms+'EducationalObjective': schema+'teaches',
     edurep_terms+'Discipline': schema+'educationalAlignment',
+    None: schema+'keywords',
 }
 
 def prep_improve_keyword(lookupObject):
@@ -135,7 +136,7 @@ def prep_improve_keyword(lookupObject):
             l_result = lookupObject.lookupByValue('urn:edurep:conceptset', search)
             if l_result and l_result.type:
                 break
-        if not l_result or not l_result.type:
+        if not l_result.id or not l_result.type:
             return schema+'keywords', add_id_to_defined_term(d), None
         target_p = type_to_target[l_result.type]
         return target_p, result_to_defined_term(l_result, target_p), l_result.exactMatch
@@ -257,6 +258,9 @@ def test_is_curriculum_waarde():
             is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader'}))
     test.eq((False, None),
             is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/'}))
+    test.eq((False, None),
+            is_curriculum_waarde_in_term(term("http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml#natuur",
+            "http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml")))
 
 @test
 def test_add_id_to_defined_term():
@@ -395,6 +399,13 @@ class educationalAlignment:
                     exactMatch='https://opendata.slo.nl/curriculum/uuid/11223344-5566-7788-9900-123456123456',
                     type=edurep_terms+'Discipline',),
         })
+        lookup.by_value.update({
+            'natuur': _l(
+                id='http://purl.edustandaard.nl/begrippenkader/f97e788f-5aa6-4ab4-9448-9e27b79daa9e',
+                source='http://purl.edustandaard.nl/begrippenkader',
+                labels=[('Natuur', 'nl')],
+            ),
+        })
 
         rules = {
             schema+'educationalAlignment': defined_term(schema+'educationalAlignment', lookup),
@@ -420,6 +431,27 @@ class educationalAlignment:
             schema+'inDefinedTermSet': [{'@value': 'not:conceptset'}],
             schema+'termCode': [{'@value': 'urn:uuid:onderwijs'}],
             schema+'name':[{'@value':'Ondewijs'}],
+        }]}, result, diff=test.diff2)
+
+    # @test
+    # Duidt een mogelijk probleem aan.
+    # Keywords die geent type krijgen worden niet verbeterd.
+    def move_data_to_keywords_natuur(convert):
+        w, lookup = convert
+        start = {schema+'educationalAlignment':[{
+            "@id": "http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml#natuur",
+            '@type': [schema+'AlignmentObject'],
+            schema+'educationalFramework': [{'@value': "http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml"}],
+            schema+'targetName': [{'@value': 'natuur'}],
+            schema+'name':[{'@value':'natuur'}],
+        }]}
+
+        result = w(start)
+        test.eq({schema+'keywords':[{
+            '@id': 'http://purl.edustandaard.nl/begrippenkader/f97e788f-5aa6-4ab4-9448-9e27b79daa9e',
+            '@type': [schema+'DefinedTerm'],
+            schema+'inDefinedTermSet': [{'@value': 'http://purl.edustandaard.nl/begrippenkader'}],
+            schema+'name':[{'@value':'Natuur', '@language': 'nl'}],
         }]}, result, diff=test.diff2)
 
     @test
