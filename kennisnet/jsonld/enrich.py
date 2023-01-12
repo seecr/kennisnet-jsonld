@@ -2,8 +2,8 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2023 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2023 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -166,6 +166,10 @@ def is_boolean(a,s,p,os):
         return a | {p:result}
     return a
 
+def normalize_date(os):
+    r = (o|{'@value': utils.normalize_datetime(o['@value'])} for o in os)
+    return tuple(o for o in r if not o['@value'] is None)
+
 def prepare_enrich(lookupObject=None):
     info = {
     }
@@ -194,6 +198,7 @@ def prepare_enrich(lookupObject=None):
         schema+'license': license_fn,
         schema+'copyrightNotice': license_fn,
         lom+'copyrightAndOtherRestrictions': license_fn,
+        schema+'dateModified': map_predicate2(schema+'dateModified', normalize_date),
         '*': identity,
     }
     for k, v in rules.items():
@@ -211,7 +216,8 @@ def prepare_enrich(lookupObject=None):
 
 
     w = walk(rules)
-    def enrich(data):
+    def enrich(data, dateModified=None):
+        dateModified = utils.normalize_datetime(dateModified)
         result = w(data)
         for target, matches_id in result.pop('exactMatch', []):
             terms = result.get(target, [])
@@ -219,6 +225,8 @@ def prepare_enrich(lookupObject=None):
                 continue
             term = result_to_defined_term(lookupObject.lookupById('urn:edurep:conceptset', matches_id), target)
             result[target] = terms + [term]
+        if dateModified and result.get(schema+'dateModified') is None:
+            result[schema+'dateModified'] = [{'@value': dateModified}]
         return tuple2list(result)
     return enrich, info
 
@@ -633,6 +641,29 @@ def test_definition_not_found(enrich_and_lookup:1):
     test.eq({'has': 'value',
         }, r)
     test.eq([('target_p', 'value')], lookup.invalid)
+
+@test
+def test_dateModified(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
+    i = example({})
+    r = enricher(i[0], dateModified='2023-01-10T00:11:22Z')
+    x = example({'schema:dateModified':'2023-01-10T00:11:22Z'})
+    test.eq(x[0],r, diff=test.diff)
+
+    i = example({'schema:dateModified':'2019-01-10T00:11:22Z'})
+    r = enricher(i[0], dateModified='2023-01-10T00:11:22Z')
+    x = example({'schema:dateModified':'2019-01-10T00:11:22Z'})
+    test.eq(x[0],r, diff=test.diff)
+
+    i = example({'schema:dateModified':'2019-01-10T00:11:22+00:00'})
+    r = enricher(i[0], dateModified='2023-01-10T00:11:22Z')
+    x = example({'schema:dateModified':'2019-01-10T00:11:22Z'})
+    test.eq(x[0],r, diff=test.diff)
+
+    i = example({})
+    r = enricher(i[0], dateModified='2023-01-10')
+    x = example({'schema:dateModified':'2023-01-10T00:00:00Z'})
+    test.eq(x[0],r, diff=test.diff)
 
 @test
 def test_text(enrich_and_lookup):

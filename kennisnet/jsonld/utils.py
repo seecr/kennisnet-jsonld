@@ -2,8 +2,8 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2023 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2023 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -23,6 +23,7 @@
 #
 ## end license ##
 
+from seecr.zulutime import ZuluTime
 def as_value(v,l):
     if l:
         return {'@value':v, '@language':l}
@@ -36,6 +37,14 @@ def pretty_print_uuid(s):
     except ValueError:
         return s
 
+def normalize_datetime(date):
+    if not date:
+        return None
+    try:
+        return ZuluTime(date).zulu()
+    except:
+        return None
+
 import autotest
 test = autotest.get_tester(__name__)
 
@@ -48,3 +57,12 @@ def uuid_pretty_print():
     for same in ['http://purl.edustandaard.nl/begrippenkader//0a715024-bacd-41ed-9ac8-134be6c03f7',
             '/0a715024-bacd-41ed-9ac8-134be6c03f7']:
         test.eq(same, pretty_print_uuid(same))
+
+@test
+def test_normalize_datetime():
+    test.eq('2023-01-11T12:34:56Z', normalize_datetime('2023-01-11T12:34:56Z'))
+    test.eq('2023-01-11T12:34:56Z', normalize_datetime('2023-01-11T12:34:56+00:00'))
+    test.eq('2023-01-11T12:34:56Z', normalize_datetime('2023-01-11T13:34:56+01:00'))
+    test.eq('2023-01-11T00:00:00Z', normalize_datetime('2023-01-11'))
+    test.eq(None, normalize_datetime('last year'))
+    test.eq(None, normalize_datetime(None))
