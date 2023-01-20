@@ -64,8 +64,7 @@ def add_id_to_defined_term(term):
     return term
 
 definition_rules = {
-    '__all__': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
-    '@type': ignore_silently,
+    '@type': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
     '@id': identity,
     schema+'name': identity,
     schema+'inDefinedTermSet': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
@@ -87,8 +86,7 @@ definition_alignment_rules = {
 definition_alignment_walk = walk(definition_alignment_rules)
 
 definition_alignment_to_keywords_rules = {
-    '__all__': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
-    '@type': ignore_silently,
+    '@type': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
     '@id': identity,
     schema+'educationalFramework': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
     schema+'targetName': with_predicate(schema+'termCode', remove_duplicate_values),
@@ -239,7 +237,9 @@ def defined_term(target_p, lookupObject):
             else:
                 target = keywords_target_p
                 result = to_keywords_walk(term)
-                target, result, matches_id = improve_keyword(result)
+                matches_id = None
+                if result.get('@type') == [schema+'DefinedTerm']:
+                    target, result, matches_id = improve_keyword(result)
             if not target in results:
                 results[target] = a.get(target, [])
             if matches_id:
@@ -826,3 +826,6 @@ class keywords_flow:
             '@id': 'urn:keyword:Niet_gespecificeerd',
         }]}
         result = w(start)
+        test.eq({schema+'keywords':[{
+            '@id': 'urn:keyword:Niet_gespecificeerd',
+        }]}, result, diff=test.diff2)
