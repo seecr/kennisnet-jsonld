@@ -41,7 +41,7 @@ def enrich_and_lookup(nr_invalid=0, nr_not_found=0):
     test.eq(nr_not_found, len(lookup.not_found))
 
 @test
-def was_lookuperror_with_educationalAlignment(enrich_and_lookup):
+def was_lookuperror_with_educationalAlignment(enrich_and_lookup:1):
     rec = example({
         'schema:educationalAlignment': [{
             '@id': 'urn:keyword:Niet_gespecificeerd',
@@ -52,9 +52,28 @@ def was_lookuperror_with_educationalAlignment(enrich_and_lookup):
             'schema:targetName': [{'@value': 'Niet gespecificeerd'}],
             'schema:termCode': [{'@value': 'Niet gespecificeerd'}],
         }],
+        'schema:educationalLevel': [{
+            '@id': 'urn:keyword:VO',
+            '@type': ['schema:DefinedTerm'],
+            'schema:inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            'schema:name': [{'@value': 'VO'}],
+            'schema:termCode': [{'@value': 'VO'}]
+            }, {
+            '@id': 'urn:keyword:MBO',
+            '@type': ['schema:DefinedTerm'],
+            'schema:inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            'schema:name': [{'@value': 'MBO'}],
+            'schema:termCode': [{'@value': 'MBO'}]
+            }, {
+            '@id': 'urn:keyword:Niet_gespecificeerd'
+        }],
+        '@type': ['schema:Product', 'schema:LearningResource', 'schema:CreativeWork'],
+        'schema:audience': [{
+            '@id': 'https://purl.edustandaard.nl/vdex_intendedenduserrole_lomv1p0_20060628.xml#learner',
+            '@type': ['schema:Audience'],
+            'schema:audienceType': [{'@value': 'learner'}]}],
     })
     enrich, lookup = enrich_and_lookup
     r = enrich(rec[0])
     # print(r)
     # No more errors (see tests in defined_term.py)
-
