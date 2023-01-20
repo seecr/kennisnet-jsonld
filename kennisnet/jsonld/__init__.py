@@ -2,8 +2,8 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2023 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2023 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -24,3 +24,4 @@
 ## end license ##
 
 from .enrich import *
+from ._integration import *

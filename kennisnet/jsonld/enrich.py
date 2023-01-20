@@ -324,7 +324,7 @@ class MockLookup:
 
 def example(d):
     return jsonld.expand({
-        '@context':{'schema':schema, 'lom': lom,},
+        '@context':{'schema':schema, 'lom': lom, 'dcterms': dcterms},
         '@id': 'some:id',
         'schema:name': 'Name'}|d)
 

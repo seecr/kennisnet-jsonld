@@ -2,8 +2,8 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2023 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2023 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -31,10 +31,23 @@ import seecr.functools.core as sfc
 import urllib.parse
 import rfc3987
 
-def with_predicate(target_p):
+def with_predicate(target_p, normalize_os=None):
+    if normalize_os is None:
+        normalize_os = lambda os: os
     def fn(a,s,p,os):
-        return a | {target_p:a.get(target_p, []) + os}
+        return a | {target_p:normalize_os(a.get(target_p, []) + os)}
     return fn
+
+def remove_duplicate_values(os):
+    seen = set()
+    result = []
+    for o in os:
+        value = o.get('@value')
+        if value in seen:
+            continue
+        result.append(o)
+        seen.add(value)
+    return result
 
 def is_uri(s):
     return s is not None and rfc3987.match(s, rule='absolute_IRI')
@@ -51,11 +64,15 @@ def add_id_to_defined_term(term):
     return term
 
 definition_rules = {
-    '@type': identity,
+    '@type': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
     '@id': identity,
-    schema+'inDefinedTermSet': identity,
-    schema+'termCode': identity,
     schema+'name': identity,
+    schema+'inDefinedTermSet': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
+    schema+'termCode': with_predicate(schema+'termCode', remove_duplicate_values),
+
+    # wrong keys
+    schema+'educationalFramework': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
+    schema+'targetName': with_predicate(schema+'termCode', remove_duplicate_values),
 }
 definition_walk = walk(definition_rules)
 definition_alignment_rules = {
@@ -64,17 +81,20 @@ definition_alignment_rules = {
     schema+'educationalFramework': identity,
     schema+'targetName': identity,
     schema+'name': identity,
-    schema+'alignmentType': identity
+    schema+'alignmentType': identity,
 }
 definition_alignment_walk = walk(definition_alignment_rules)
 
 definition_alignment_to_keywords_rules = {
     '@type': lambda a,s,p,os: a|{'@type':[schema+'DefinedTerm']},
     '@id': identity,
-    schema+'educationalFramework': with_predicate(schema+'inDefinedTermSet'),
-    schema+'targetName': with_predicate(schema+'termCode'),
+    schema+'educationalFramework': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
+    schema+'targetName': with_predicate(schema+'termCode', remove_duplicate_values),
     schema+'name': identity,
     schema+'alignmentType': ignore_silently,
+    # wrong values
+    schema+'inDefinedTermSet': with_predicate(schema+'inDefinedTermSet', remove_duplicate_values),
+    schema+'termCode': with_predicate(schema+'termCode', remove_duplicate_values),
 }
 definition_alignment_keywords_walk = walk(definition_alignment_to_keywords_rules)
 
@@ -542,6 +562,27 @@ class educationalAlignment:
             schema+'name':[{'@language': 'nl', '@value':'Lezen van zakelijke teksten'}],
         }]}, result, diff=test.diff2)
 
+    @test
+    def wrong_keys_in_educationalAlignment(convert):
+        w, lookup = convert
+        start = {schema+'educationalAlignment':[{
+            '@id': 'urn:keyword:Niet_gespecificeerd',
+            '@type': [schema+'AlignmentObject', schema+'DefinedTerm'],
+            schema+'educationalFramework': [{'@value': 'urn:keyword'}],
+            schema+'inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            schema+'name': [{'@value': 'Niet gespecificeerd'}],
+            schema+'targetName': [{'@value': 'Niet gespecificeerd'}],
+            schema+'termCode': [{'@value': 'Niet gespecificeerd'}],
+        }]}
+        result = w(start)
+        test.eq({schema+'keywords':[{
+            '@id': 'urn:keyword:Niet_gespecificeerd',
+            '@type': [schema+'DefinedTerm'],
+            schema+'inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            schema+'name': [{'@value': 'Niet gespecificeerd'}],
+            schema+'termCode': [{'@value': 'Niet gespecificeerd'}],
+        }]}, result, diff=test.diff2)
+
 class keywords_flow:
     _lookup = LookupObject()
     _lookup.by_value.update({
@@ -754,4 +795,25 @@ class keywords_flow:
                 schema+'name': [{'@value': 'Gewoon keyword'},],
             },],
         }, result, diff=test.diff2)
+
+    @test
+    def wrong_keys_in_educationalLevel(convert):
+        w, lookup = convert
+        start = {schema+'educationalLevel':[{
+            '@id': 'urn:keyword:Niet_gespecificeerd',
+            '@type': [schema+'AlignmentObject', schema+'DefinedTerm'],
+            schema+'educationalFramework': [{'@value': 'urn:keyword'}],
+            schema+'inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            schema+'name': [{'@value': 'Niet gespecificeerd'}],
+            schema+'targetName': [{'@value': 'Niet gespecificeerd'}],
+            schema+'termCode': [{'@value': 'Niet gespecificeerd'}],
+        }]}
+        result = w(start)
+        test.eq({schema+'keywords':[{
+            '@id': 'urn:keyword:Niet_gespecificeerd',
+            '@type': [schema+'DefinedTerm'],
+            schema+'inDefinedTermSet': [{'@value': 'urn:keyword'}],
+            schema+'name': [{'@value': 'Niet gespecificeerd'}],
+            schema+'termCode': [{'@value': 'Niet gespecificeerd'}],
+        }]}, result, diff=test.diff2)
 
