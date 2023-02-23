@@ -607,6 +607,55 @@ def test_educationallevel_copy_with_lookup_and_match_already_present(enrich_and_
     test.eq(x[0],  r, diff=test.diff2)
 
 @test
+def test_two_matches_in_different_items(enrich_and_lookup):
+    enricher, lookup = enrich_and_lookup
+    i = example({
+        'schema:teaches': [{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'some code'
+        }],
+        'schema:educationalLevel': [{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:termCode': 'some code'
+        }],
+        })
+    r = enricher(i[0])
+    x = example({
+        'schema:teaches': [{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Heeft overeenkomst'},
+            'schema:termCode': 'some code'
+         },{
+            '@id': 'uri:matches',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/concept',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Hetzelfde'},
+        }],
+        'schema:educationalLevel': [{
+            '@id': 'uri:has_match',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/begrippenkader',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Heeft overeenkomst'},
+            'schema:termCode': 'some code'
+         },{
+            '@id': 'uri:matches',
+            '@type': 'schema:DefinedTerm',
+            'schema:inDefinedTermSet': 'http://purl.edustandaard.nl/concept',
+            'schema:name': {'@language': 'nl',
+                            '@value': 'Hetzelfde'},
+        }],
+        })
+    test.eq(x[0],  r, diff=test.diff2)
+@test
 def test_definition(enrich_and_lookup):
     enricher, lookup = enrich_and_lookup
     lookup.by_value['test:lookup'] = {

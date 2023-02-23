@@ -225,7 +225,7 @@ def defined_term(target_p, lookupObject):
         2.2 vul label en termCode aan op basis van @id
         3 Voeg een DefinedTerm toe op basis van exactMatch
         '''
-        results = {'exactMatch': []}
+        results = {'exactMatch': a.get('exactMatch', [])}
         for term in os:
             is_cur, curriculum_uri = is_curriculum_waarde_in_term(term, inDefinedTermSet)
             if is_cur:
