@@ -1,9 +1,10 @@
+#!/bin/bash
 ## begin license ##
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022-2024 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2024 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2024 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -23,31 +24,22 @@
 #
 ## end license ##
 
-from seecr.zulutime import ZuluTime
+this_dir=$(pwd)
+env_dir=${this_dir}/env
 
+PYTHON_EXC=python3
+PROJECT_NAME=edurep
 
-def as_value(v, l):
-    if l:
-        return {"@value": v, "@language": l}
-    return {"@value": v}
-
-
-import re, uuid
-
-uuid_r = re.compile(r"(?i)[a-f0-9\-]{32,36}")
-
-
-def pretty_print_uuid(s):
-    try:
-        return uuid_r.sub(lambda m: str(uuid.UUID(m.group(0))), s)
-    except ValueError:
-        return s
-
-
-def normalize_datetime(date):
-    if not date:
-        return None
-    try:
-        return ZuluTime(date).zulu()
-    except:
-        return None
+if [ -d "${env_dir}" ]; then
+    echo "Environment already exists: ${env_dir}"
+else
+    echo "Creating virtualenv: ${env_dir}"
+    ${PYTHON_EXC} -m venv --prompt ${PROJECT_NAME} ${env_dir} --system-site-package
+    cat > ${env_dir}/pip.conf <<EOF
+[global]
+index-url = https://devpi.vpn.seecr.nl/seecr/dev/+simple/
+EOF
+    source ${env_dir}/bin/activate
+    ${PYTHON_EXC} -m pip install --upgrade pip
+    ${PYTHON_EXC} -m pip install --editable ${this_dir}
+fi
