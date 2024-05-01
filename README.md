@@ -8,4 +8,4 @@ This tool is developed by [Seecr](https://github.com/seecr) for [Kennisnet](http
 
 ### Tests
 
-The correct working of this tool is tested using the [autotest framework](https://github.com/seecr/autotest). Tests are part of the python code and not separated in other files. To run the tests, install the dependencies and run: `autotest kennisnet/jsonld`.
+The correct working of this tool is tested using pytest.
