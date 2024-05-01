@@ -51,3 +51,20 @@ def normalize_datetime(date):
         return ZuluTime(date).zulu()
     except:
         return None
+
+
+class _Any:
+    def __init__(self, f=None):
+        self.f = f
+
+    def __call__(self, *args, **kwargs):
+        return _Any(*args, **kwargs)
+
+    def __eq__(self, other):
+        return self.f is None or self.f(other)
+
+    def __repr__(self):
+        return "*" if self.f is None else self.f.__name__ + "(...)"
+
+
+anything = _Any()

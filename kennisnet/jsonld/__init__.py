@@ -24,4 +24,3 @@
 ## end license ##
 
 from .enrich import *
-from ._integration import *

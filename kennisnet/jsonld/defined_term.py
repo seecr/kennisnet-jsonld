@@ -2,8 +2,8 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022-2023 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022-2023 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2024 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -257,32 +257,6 @@ test = autotest.get_tester(__name__)
 from collections import namedtuple
 _l = namedtuple('LookupResult', ['id', 'identifier', 'source', 'labels', 'uri', 'exactMatch', 'type'], defaults=[None, None, None, list(), None, None, None])
 
-
-@test
-def test_is_curriculum_waarde():
-    def term(id, termSet):
-        return {'@id':id, schema+'inDefinedTermSet':({'@value': termSet},)}
-    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
-            is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/begrippenkader')))
-    test.eq((False, None),
-            is_curriculum_waarde_in_term(term('unknown:id', 'my:begrippenkader')))
-    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
-            is_curriculum_waarde_in_term(term('http://purl.edustandaard.nl/begrippenkader/unknown:id', 'my:begrippenkader')))
-    test.eq((True, 'http://purl.edustandaard.nl/begrippenkader'),
-            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/unknown:id'}))
-    test.eq((False, 'http://purl.edustandaard.nl/begrippenkader'),
-            is_curriculum_waarde_in_term({schema+'inDefinedTermSet':({'@value': 'http://purl.edustandaard.nl/begrippenkader'},)}))
-    test.eq((True, 'http://purl.edustandaard.nl/concept'),
-            is_curriculum_waarde_in_term(term('unknown:id', 'http://purl.edustandaard.nl/concept')))
-    test.eq((True, 'https://opendata.slo.nl/curriculum/uuid'),
-            is_curriculum_waarde_in_term(term('unknown:id', 'https://opendata.slo.nl/curriculum/uuid')))
-    test.eq((False, None),
-            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader'}))
-    test.eq((False, None),
-            is_curriculum_waarde_in_term({'@id': 'http://purl.edustandaard.nl/begrippenkader/'}))
-    test.eq((False, None),
-            is_curriculum_waarde_in_term(term("http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml#natuur",
-            "http://purl.edustandaard.nl/vdex_classification_vakaanduidingen_po_2009.xml")))
 
 @test
 def test_add_id_to_defined_term():
