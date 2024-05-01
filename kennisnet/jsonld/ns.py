@@ -23,13 +23,19 @@
 #
 ## end license ##
 
-schema = 'https://schema.org/'
+schema = "https://schema.org/"
 dcterms = "http://purl.org/dc/terms/"
 lom = "http://ltsc.ieee.org/xsd/LOM#"
 prov = "http://www.w3.org/ns/prov#"
-edurep_terms = 'https://purl.edurep.nl/terms/'
+edurep_terms = "https://purl.edurep.nl/terms/"
+
 
 def to_curie(full):
-    return full.replace(schema, 'schema:').replace(dcterms, 'dcterms:').replace(lom, 'lom:')
+    return (
+        full.replace(schema, "schema:")
+        .replace(dcterms, "dcterms:")
+        .replace(lom, "lom:")
+    )
 
-__all__ = ['schema', 'dcterms', 'lom', 'prov', 'edurep_terms', 'to_curie']
+
+__all__ = ["schema", "dcterms", "lom", "prov", "edurep_terms", "to_curie"]
