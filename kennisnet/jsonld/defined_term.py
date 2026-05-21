@@ -2,7 +2,7 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022-2024 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2024, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
 # Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
@@ -126,6 +126,7 @@ curriculum_uris = {
     "http://purl.edustandaard.nl/begrippenkader",
     "https://opendata.slo.nl/curriculum/uuid",
     "http://purl.edustandaard.nl/concept",
+    "http://library.wur.nl/WebQuery/rubriek/vdex",
 }
 
 

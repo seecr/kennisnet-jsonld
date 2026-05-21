@@ -2,7 +2,7 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2024 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2024, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
 # Copyright (C) 2024 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
@@ -291,7 +291,15 @@ class TestEducationalAlignment:
                     source="http://purl.edustandaard.nl/begrippenkader",
                     labels=[("Natuur", "nl")],
                 ),
-            }
+                "Energie": _l(
+                    id="http://purl.edustandaard.nl/begrippenkader/1069617f-5a73-486e-b935-7b145c2f7519",
+                    source="http://purl.edustandaard.nl/begrippenkader",
+                    labels=[
+                        ("Natuurlijke hulpbronnen en bronnen van energie", "nl"),
+                        ("Energie", "nl"),
+                    ],
+                ),
+            },
         )
 
         rules = {
@@ -327,6 +335,50 @@ class TestEducationalAlignment:
                         schema + "inDefinedTermSet": [{"@value": "not:conceptset"}],
                         schema + "termCode": [{"@value": "urn:uuid:onderwijs"}],
                         schema + "name": [{"@value": "Ondewijs"}],
+                    }
+                ]
+            }
+
+    def test_vesna_artik_example(self):
+        with self.convert(1) as (w, lookup):
+            start = {
+                schema
+                + "educationalAlignment": [
+                    {
+                        "@id": "http://library.wur.nl/WebQuery/rubriek/vdex?rubriek=*&wq_max=2000#300-E",
+                        "@type": schema + "AlignmentObject",
+                        schema
+                        + "educationalFramework": [
+                            {
+                                "@value": "http://library.wur.nl/WebQuery/rubriek/vdex?rubriek=*&wq_max=2000"
+                            }
+                        ],
+                        schema
+                        + "name": [
+                            {"@language": "en", "@value": "Energy"},
+                            {"@language": "nl", "@value": "Energie"},
+                        ],
+                        schema + "targetName": [{"@value": "300-E"}],
+                    }
+                ]
+            }
+
+            assert w(start) == {
+                schema
+                + "educationalAlignment": [
+                    {
+                        "@id": "http://library.wur.nl/WebQuery/rubriek/vdex?rubriek=*&wq_max=2000#300-E",
+                        "@type": [schema + "AlignmentObject"],
+                        schema
+                        + "educationalFramework": [
+                            {"@value": "http://library.wur.nl/WebQuery/rubriek/vdex"}
+                        ],
+                        schema
+                        + "name": [
+                            {"@language": "en", "@value": "Energy"},
+                            {"@language": "nl", "@value": "Energie"},
+                        ],
+                        schema + "targetName": [{"@value": "300-E"}],
                     }
                 ]
             }
