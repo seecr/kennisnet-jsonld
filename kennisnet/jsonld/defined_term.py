@@ -308,7 +308,7 @@ def defined_term(target_p, lookupObject):
         "urn:edurep:conceptset": {"not_found": to_curie(target_p)}
     }
     defined_term_fn.__doc__ = defined_term_fn.__doc__.format(
-        CURRICULUM_URIS="\n           ".join(curriculum_uris)
+        CURRICULUM_URIS="\n           ".join(repr(c) for c in sorted(curriculum_uris))
     )
     return defined_term_fn
 
