@@ -274,6 +274,8 @@ def defined_term(target_p, lookupObject):
     def defined_term_fn(a, s, p, os):
         """Dit veld wordt gecontroleerd in 3 stappen, de zogenaamde Flow:
         1. Is de term een curriculumwaarde (@id of inDefinedTermSet), zo niet dan verplaatsen naar schema:keywords.
+           Curricuumwaarden zijn van de volgende bronnen:
+           {CURRICULUM_URIS}
         2.1 Zie schema:keywords
         2.2 vul label en termCode aan op basis van @id
         3 Voeg een DefinedTerm toe op basis van exactMatch
@@ -305,6 +307,9 @@ def defined_term(target_p, lookupObject):
     defined_term_fn.lookup_info = {
         "urn:edurep:conceptset": {"not_found": to_curie(target_p)}
     }
+    defined_term_fn.__doc__ = defined_term_fn.__doc__.format(
+        CURRICULUM_URIS="\n           ".join(curriculum_uris)
+    )
     return defined_term_fn
 
 

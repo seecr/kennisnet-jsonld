@@ -2,7 +2,7 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022-2024 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022-2024, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
 # Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
@@ -202,8 +202,6 @@ def normalize_date(os):
 
 
 def prepare_enrich(lookupObject=None):
-    info = {}
-
     license_fn = license(schema + "license", lookupObject, scheme="urn:lms:license")
 
     rules = {
@@ -264,6 +262,8 @@ def prepare_enrich(lookupObject=None):
         + "dateModified": map_predicate2(schema + "dateModified", normalize_date),
         "*": identity,
     }
+
+    info = {}
     for k, v in rules.items():
         doc = None
         lookup_info = None
