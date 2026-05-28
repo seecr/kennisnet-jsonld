@@ -225,6 +225,8 @@ def improve_keywords(lookupObject):
 
     def keywords_fn(a, s, p, os):
         """Dit veld wordt gecontroleerd in stap 2.1 van de zogenaamde Flow
+        2.0 Als de inDefinedTermSet een geaccepteerde curriculumwaarde is, dan wordt het keyword geaccepteerd en vindt geen lookup plaats.
+            Geaccepteerde curriculumwaarden zijn van de volgende bronnen: {ACCEPTED_CURRICULUM_URIS}
         2.1 Op basis van termCode wordt gezocht in prefLabel, altLabel, hiddenLabel op een match. Als in de match een type is opgenomen, dan wordt het keyword verplaatst.
         """
         created_keywords = a.get(p, [])
@@ -243,6 +245,11 @@ def improve_keywords(lookupObject):
         return a | {k: v for k, v in newdata.items() if v}
 
     keywords_fn.lookup_info = {"urn:edurep:conceptset": {}}
+    keywords_fn.__doc__ = keywords_fn.__doc__.format(
+        ACCEPTED_CURRICULUM_URIS="\n           ".join(
+            repr(c) for c in sorted(accepted_defined_termset_uris)
+        )
+    )
     return keywords_fn
 
 

@@ -159,9 +159,9 @@ class LookupObject:
     def lookupByValue(self, scheme, value):
         assert scheme == "urn:edurep:conceptset"
         result = self.by_value.get(value, _l())
-        print(f"lookupByValue: {scheme}, {value}, result: {result!r}")
-        if result:
-            print(f"Result: {result.id!r}, {result.type!r}")
+        # print(f"lookupByValue: {scheme}, {value}, result: {result!r}")
+        # if result:
+        #     print(f"Result: {result.id!r}, {result.type!r}")
         return result
 
 
