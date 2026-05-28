@@ -129,6 +129,9 @@ curriculum_uris = {
 }
 accepted_defined_termset_uris = {
     "http://library.wur.nl/WebQuery/rubriek/vdex",
+    "http://www.cbs.nl/nl-NL/menu/methoden/classificaties/overzicht/isced/default.htm",
+    "MESH",
+    "https://api3.schooltv.nl/oaipmh/vdex_classification_schooltv_categories",
 }
 
 
