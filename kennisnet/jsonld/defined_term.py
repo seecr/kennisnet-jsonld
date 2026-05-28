@@ -126,6 +126,8 @@ curriculum_uris = {
     "http://purl.edustandaard.nl/begrippenkader",
     "https://opendata.slo.nl/curriculum/uuid",
     "http://purl.edustandaard.nl/concept",
+}
+accepted_defined_termset_uris = {
     "http://library.wur.nl/WebQuery/rubriek/vdex",
 }
 
@@ -184,9 +186,23 @@ type_to_target = {
 }
 
 
+def acceptable_DefinedTermSet(d):
+    inDefinedTermSet = sfc.get_in(d, (schema + "inDefinedTermSet", 0, "@value"))
+    if not inDefinedTermSet:
+        return False, d
+    for uri in accepted_defined_termset_uris:
+        if inDefinedTermSet.startswith(uri):
+            d[schema + "inDefinedTermSet"] = [{"@value": uri}]
+            return True, d
+    return False, d
+
+
 def prep_improve_keyword(lookupObject):
     def improve_keyword(d):
         assert d["@type"] == [schema + "DefinedTerm"]
+        accepted, d = acceptable_DefinedTermSet(d)
+        if accepted:
+            return schema + "keywords", d, None
         termCode = sfc.get_in(d, (schema + "termCode", 0, "@value"))
         search_for = [termCode] + [
             v["@value"] for v in d.get(schema + "name", {}) if "@value" in v

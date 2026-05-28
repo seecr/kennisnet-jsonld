@@ -158,7 +158,11 @@ class LookupObject:
 
     def lookupByValue(self, scheme, value):
         assert scheme == "urn:edurep:conceptset"
-        return self.by_value.get(value, _l())
+        result = self.by_value.get(value, _l())
+        print(f"lookupByValue: {scheme}, {value}, result: {result!r}")
+        if result:
+            print(f"Result: {result.id!r}, {result.type!r}")
+        return result
 
 
 class TestTeaches:
@@ -340,7 +344,7 @@ class TestEducationalAlignment:
             }
 
     def test_vesna_artik_example(self):
-        with self.convert(1) as (w, lookup):
+        with self.convert(0) as (w, lookup):
             start = {
                 schema
                 + "educationalAlignment": [
@@ -365,12 +369,12 @@ class TestEducationalAlignment:
 
             assert w(start) == {
                 schema
-                + "educationalAlignment": [
+                + "keywords": [
                     {
                         "@id": "http://library.wur.nl/WebQuery/rubriek/vdex?rubriek=*&wq_max=2000#300-E",
-                        "@type": [schema + "AlignmentObject"],
+                        "@type": [schema + "DefinedTerm"],
                         schema
-                        + "educationalFramework": [
+                        + "inDefinedTermSet": [
                             {"@value": "http://library.wur.nl/WebQuery/rubriek/vdex"}
                         ],
                         schema
@@ -378,7 +382,7 @@ class TestEducationalAlignment:
                             {"@language": "en", "@value": "Energy"},
                             {"@language": "nl", "@value": "Energie"},
                         ],
-                        schema + "targetName": [{"@value": "300-E"}],
+                        schema + "termCode": [{"@value": "300-E"}],
                     }
                 ]
             }
