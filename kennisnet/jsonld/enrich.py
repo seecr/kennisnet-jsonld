@@ -118,7 +118,7 @@ def text(target_p, lookup, scheme):
 
 def cost(target_p, lookup, scheme):
     def text_fn(a, s, p, os):
-        """Dit is een tijdelijk veld om waarde over te nemen uit het lom/cost veld. Waardes worden omgezet naar True of False voor schema:isAccessibleForFree"""
+        """Dit is een tijdelijk veld om waarde over te nemen uit het lom/cost veld. Waardes worden omgezet naar True of False voor `schema:isAccessibleForFree`"""
         for v in values(os):
             l = lookup.lookupByValue(scheme, v)
             if l.identifier:
@@ -135,8 +135,9 @@ def license(target_p, lookup, scheme):
 
     def license_fn(a, s, p, os):
         """Op basis van lom:copyrightAndOtherRestrictions wordt een lookup gedaan.
-        Bij succesvolle lookup worden de velden lom:copyrightAndOtherRestrictions, schema:license en schema:copyrightNotice gevuld.
-        In andere gevallen wordt de huidige data overgenomen"""
+
+        - Bij succesvolle lookup worden de velden `lom:copyrightAndOtherRestrictions`, `schema:license` en `schema:copyrightNotice` gevuld.
+        - In andere gevallen wordt de huidige data overgenomen"""
         r_other = a.get(lom + "copyrightAndOtherRestrictions", [])
         r_notice = a.get(schema + "copyrightNotice", [])
         r_license = a.get(schema + "license", [])
@@ -171,6 +172,9 @@ def license(target_p, lookup, scheme):
         return a | new
 
     license_fn.lookup_info = {scheme: {"invalid": to_curie(schema + "license")}}
+    doc = license_fn.__doc__
+    doc = "\n".join(line.strip() for line in doc.splitlines())
+    license_fn.__doc__ = doc
     return license_fn
 
 

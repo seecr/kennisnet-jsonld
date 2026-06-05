@@ -227,10 +227,11 @@ def improve_keywords(lookupObject):
     improve_keyword = prep_improve_keyword(lookupObject)
 
     def keywords_fn(a, s, p, os):
-        """Dit veld wordt gecontroleerd in stap 2.1 van de zogenaamde Flow
-        2.0 Als de inDefinedTermSet een geaccepteerde curriculumwaarde is, dan wordt het keyword geaccepteerd en vindt geen lookup plaats.
-            Geaccepteerde curriculumwaarden zijn van de volgende bronnen: {ACCEPTED_CURRICULUM_URIS}
-        2.1 Op basis van termCode wordt gezocht in prefLabel, altLabel, hiddenLabel op een match. Als in de match een type is opgenomen, dan wordt het keyword verplaatst.
+        """Dit veld wordt gecontroleerd in stap 2.1 van de zogenaamde Flow:
+
+        - **2.0** Als de inDefinedTermSet een geaccepteerde termset-waarde is, dan wordt het keyword geaccepteerd en vindt geen lookup plaats.
+                Geaccepteerde termset-waarden zijn van de volgende bronnen: {ACCEPTED_TERMSET_URIS}
+        - **2.1** Op basis van termCode wordt gezocht in prefLabel, altLabel, hiddenLabel op een match. Als in de match een type is opgenomen, dan wordt het keyword verplaatst.
         """
         created_keywords = a.get(p, [])
         newdata = {p: []}
@@ -248,10 +249,11 @@ def improve_keywords(lookupObject):
         return a | {k: v for k, v in newdata.items() if v}
 
     keywords_fn.lookup_info = {"urn:edurep:conceptset": {}}
-    keywords_fn.__doc__ = keywords_fn.__doc__.format(
-        ACCEPTED_CURRICULUM_URIS="\n           ".join(
-            repr(c) for c in sorted(accepted_defined_termset_uris)
-        )
+    doc = keywords_fn.__doc__
+    doc = "\n".join(line.strip() for line in doc.splitlines())
+    keywords_fn.__doc__ = doc.format(
+        ACCEPTED_TERMSET_URIS="\n"
+        + "\n  - ".join(repr(c) for c in [""] + sorted(accepted_defined_termset_uris))
     )
     return keywords_fn
 
@@ -299,12 +301,12 @@ def defined_term(target_p, lookupObject):
 
     def defined_term_fn(a, s, p, os):
         """Dit veld wordt gecontroleerd in 3 stappen, de zogenaamde Flow:
-        1. Is de term een curriculumwaarde (@id of inDefinedTermSet), zo niet dan verplaatsen naar schema:keywords.
-           Curricuumwaarden zijn van de volgende bronnen:
-           {CURRICULUM_URIS}
-        2.1 Zie schema:keywords
-        2.2 vul label en termCode aan op basis van @id
-        3 Voeg een DefinedTerm toe op basis van exactMatch
+
+        - **1.** Is de term een curriculumwaarde (@id of inDefinedTermSet), zo niet dan verplaatsen naar `schema:keywords`.
+           Curricuumwaarden zijn van de volgende bronnen: {CURRICULUM_URIS}
+        - **2.1** Zie schema:keywords
+        - **2.2** vul label en termCode aan op basis van @id
+        - **3** Voeg een DefinedTerm toe op basis van exactMatch
         """
         results = {"exactMatch": a.get("exactMatch", [])}
         for term in os:
@@ -333,8 +335,11 @@ def defined_term(target_p, lookupObject):
     defined_term_fn.lookup_info = {
         "urn:edurep:conceptset": {"not_found": to_curie(target_p)}
     }
-    defined_term_fn.__doc__ = defined_term_fn.__doc__.format(
-        CURRICULUM_URIS="\n           ".join(repr(c) for c in sorted(curriculum_uris))
+    doc = defined_term_fn.__doc__
+    doc = "\n".join(line.strip() for line in doc.splitlines())
+    defined_term_fn.__doc__ = doc.format(
+        CURRICULUM_URIS="\n"
+        + "\n  - ".join(repr(c) for c in [""] + sorted(curriculum_uris))
     )
     return defined_term_fn
 
