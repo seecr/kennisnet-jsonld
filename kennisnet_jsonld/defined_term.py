@@ -3,7 +3,7 @@
 # "Kennisnet Json-LD" provides tools for handling tools
 #
 # Copyright (C) 2022-2024, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2024, 2026 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -26,7 +26,7 @@
 from .ns import schema, edurep_terms, to_curie
 from metastreams.jsonld import identity, walk, ignore_silently
 import seecr.functools as sfc
-import kennisnet.jsonld.utils as utils
+import kennisnet_jsonld.utils as utils
 import seecr.functools.core as sfc
 import urllib.parse
 import rfc3987

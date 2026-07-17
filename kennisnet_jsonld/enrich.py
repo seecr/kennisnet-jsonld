@@ -3,7 +3,7 @@
 # "Kennisnet Json-LD" provides tools for handling tools
 #
 # Copyright (C) 2022-2024, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
-# Copyright (C) 2022-2024 Stichting Kennisnet https://www.kennisnet.nl
+# Copyright (C) 2022-2024, 2026 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
 #
@@ -37,7 +37,7 @@ from .defined_term import (
     add_id_to_defined_term,
 )
 from .ns import schema, lom, dcterms, edurep_terms, to_curie
-import kennisnet.jsonld.utils as utils
+import kennisnet_jsonld.utils as utils
 
 
 def getp_first_value(d, p):

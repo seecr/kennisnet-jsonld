@@ -3,7 +3,7 @@
 #
 # "Kennisnet Json-LD" provides tools for handling tools
 #
-# Copyright (C) 2022 Seecr (Seek You Too B.V.) https://seecr.nl
+# Copyright (C) 2022, 2026 Seecr (Seek You Too B.V.) https://seecr.nl
 # Copyright (C) 2022 Stichting Kennisnet https://www.kennisnet.nl
 #
 # This file is part of "Kennisnet Json-LD"
@@ -29,25 +29,24 @@ import pathlib
 
 here = pathlib.Path(__file__).parent.resolve()
 
-long_description = (here/"README.md").read_text(encoding="utf-8")
+long_description = (here / "README.md").read_text(encoding="utf-8")
 
-version = '0.1.0'
+version = "0.1.0"
 
-packages = find_packages(exclude=('kennisnet',))
-packages = find_packages() #DO_NOT_DISTRIBUTE
+packages = find_packages()
 
 setup(
-    name='kennisnet-jsonld',
+    name="kennisnet-jsonld",
     version=version,
-    description='Json-ld utilities for Kennisnet',
+    description="Json-ld utilities for Kennisnet",
     long_description=long_description,
-    long_description_content_type='text/markdown',
+    long_description_content_type="text/markdown",
     packages=packages,
-    author='Seecr',
-    author_email='info@seecr.nl',
-    url='https://github.com/seecr/kennisnet-jsonld',
+    author="Seecr",
+    author_email="info@seecr.nl",
+    url="https://github.com/seecr/kennisnet-jsonld",
     classifiers=[
-        'License :: OSI Approved :: GNU General Public License v2 (GPLv2)',
-        'Programming Language :: Python :: 3',
+        "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+        "Programming Language :: Python :: 3",
     ],
 )
